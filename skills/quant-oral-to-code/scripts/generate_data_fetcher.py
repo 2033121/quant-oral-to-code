@@ -8,6 +8,12 @@ from string import Template
 ROOT = Path(__file__).resolve().parents[1]
 TEMPLATE_DIR = ROOT / "templates"
 REFERENCE_NOTES = ROOT / "references" / "a_share_provider_notes.md"
+RUNTIME_SUPPORT_FILES = (
+    "normalize_to_duckdb.py",
+    "context_data_helpers.py",
+    "build_data_contract.py",
+    "validate_fetched_dataset.py",
+)
 TEMPLATE_MAP = {
     "akshare": "fetch_with_akshare.py.tmpl",
     "efinance": "fetch_with_efinance.py.tmpl",
@@ -31,6 +37,95 @@ def _render_template(template_name: str, context: dict[str, str]) -> str:
     template_path = TEMPLATE_DIR / template_name
     template = Template(template_path.read_text(encoding="utf-8"))
     return template.substitute(context)
+
+
+def _copy_runtime_support_files(output_dir: Path) -> list[str]:
+    copied: list[str] = []
+    scripts_dir = ROOT / "scripts"
+    for filename in RUNTIME_SUPPORT_FILES:
+        source = scripts_dir / filename
+        target = output_dir / filename
+        target.write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
+        copied.append(str(target))
+    return copied
+
+
+_RUNTIME_RESOLUTION_SNIPPET = """WORKSPACE_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT_SENTINELS = (".git", "docs", "skills")
+SKILL_SCRIPT_SENTINELS = ("normalize_to_duckdb.py", "context_data_helpers.py")
+
+
+def _resolve_repo_root() -> Path:
+    for candidate in (WORKSPACE_ROOT, *WORKSPACE_ROOT.parents):
+        script_root = candidate / "skills" / "quant-oral-to-code" / "scripts"
+        has_repo_sentinels = all((candidate / sentinel).exists() for sentinel in REPO_ROOT_SENTINELS)
+        has_skill_sentinels = all((script_root / sentinel).exists() for sentinel in SKILL_SCRIPT_SENTINELS)
+        if has_repo_sentinels and has_skill_sentinels:
+            return candidate
+    raise FileNotFoundError(f"Could not locate quant-oral-to-code skill root from {WORKSPACE_ROOT}")
+
+
+REPO_ROOT = _resolve_repo_root()
+SCRIPT_ROOT = REPO_ROOT / "skills" / "quant-oral-to-code" / "scripts"
+
+
+def _load_module(module_filename: str, module_name: str):
+    module_path = SCRIPT_ROOT / module_filename
+    spec = importlib.util.spec_from_file_location(module_name, module_path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"Could not load {module_filename} from {module_path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+normalize_to_duckdb = _load_module(
+    "normalize_to_duckdb.py",
+    "quant_oral_to_code_normalize_to_duckdb",
+).normalize_to_duckdb
+persist_real_data_artifacts = _load_module(
+    "context_data_helpers.py",
+    "quant_oral_to_code_context_data_helpers",
+).persist_real_data_artifacts
+"""
+
+_LOCAL_RUNTIME_SNIPPET = """import json
+from pathlib import Path
+
+"""
+
+_LOCAL_IMPORTS = """WORKSPACE_ROOT = Path(__file__).resolve().parents[1]
+
+from context_data_helpers import persist_real_data_artifacts
+from normalize_to_duckdb import normalize_to_duckdb
+from validate_fetched_dataset import validate_fetched_dataset
+"""
+
+
+def _postprocess_fetcher_text(rendered: str) -> str:
+    text = rendered.replace("import importlib.util\n", "", 1)
+    text = text.replace(_RUNTIME_RESOLUTION_SNIPPET, _LOCAL_IMPORTS, 1)
+    normalization_line = (
+        '    normalization = normalize_to_duckdb(RAW_OUTPUT, DUCKDB_OUTPUT, '
+        'raw_input_format="csv", adjustment_mode="qfq")'
+    )
+    validation_block = "\n".join(
+        [
+            normalization_line,
+            "    validation = validate_fetched_dataset(DUCKDB_OUTPUT)",
+            "    if not validation.get(\"ok\", False):",
+            "        raise RuntimeError("
+            'f"normalized DuckDB validation failed: {validation.get(\'errors\', [])}"'
+            ")",
+        ]
+    )
+    text = text.replace(normalization_line, validation_block, 1)
+    text = text.replace(
+        '        **normalization,\n        "provider_name": PROVIDER_NAME,',
+        '        **normalization,\n        "dataset_validation": validation,\n        "provider_name": PROVIDER_NAME,',
+        1,
+    )
+    return text
 
 
 def _context_support_summary(provider: dict[str, object]) -> list[str]:
@@ -149,10 +244,13 @@ def generate_data_fetcher(
             ),
         },
     )
+    rendered = _postprocess_fetcher_text(rendered)
     fetcher_path.write_text(rendered, encoding="utf-8")
+    runtime_support_files = _copy_runtime_support_files(data_dir)
     return {
         "decision": decision,
         "provider_choice_file": str(choice_path),
         "provider_setup_file": str(setup_path),
         "fetcher_file": str(fetcher_path),
+        "runtime_support_files": runtime_support_files,
     }

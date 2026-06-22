@@ -26,6 +26,36 @@
 
 可选 provider 或模板依赖不进入根目录最小依赖集合，按使用场景自行安装。
 
+## 安装与发布布局
+
+当前发布统一分成四种布局：
+
+- `quant-oral-to-code-claude-bundle.zip`
+  适合 Claude / 直接技能目录型 agent。解压到目标 `skills` 目录后，应直接出现 `quant-oral-to-code/SKILL.md`。
+- `quant-oral-to-code-mimo-bundle.zip`
+  适合 MiMo Code 这类同样要求“技能目录直挂”的系统。解压后同样应直接出现 `quant-oral-to-code/SKILL.md`。
+- `quant-oral-to-code-codex-bundle.zip`
+  适合需要外层 `skills/` 容器的系统。解压后应出现 `skills/quant-oral-to-code/SKILL.md`。
+- `quant-oral-to-code-skill-pack`
+  这是保留给旧分发链路的兼容目录，现已对齐新版内容，不再是历史旧包。
+
+如果某个 agent 安装后“找不到 skill”，先检查是不是多复制了一层外壳目录。正确结果不是：
+
+- `.../skills/quant-oral-to-code-claude-bundle/quant-oral-to-code/SKILL.md`
+
+正确结果应该是以下两种之一：
+
+- `.../skills/quant-oral-to-code/SKILL.md`
+- `.../skills/skills/quant-oral-to-code/SKILL.md`
+
+具体取决于目标系统是否要求外层 `skills/` 容器。
+
+重新生成全部发布产物：
+
+```powershell
+& "C:\Users\xing\AppData\Local\Programs\Python\Python312\python.exe" "skills/quant-oral-to-code/scripts/build_release_bundle.py" --output-dir "..\packages" --layout all --zip
+```
+
 ## 数据存储标准
 
 - DuckDB 是唯一标准持久化格式
