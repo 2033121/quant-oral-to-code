@@ -1,19 +1,50 @@
 from __future__ import annotations
 
 import argparse
+import importlib.util
+import json
 from pathlib import Path
-import sys
 
 import akshare as ak
 import pandas as pd
 
 WORKSPACE_ROOT = Path(__file__).resolve().parents[1]
-REPO_ROOT = WORKSPACE_ROOT.parents[1]
-SCRIPT_ROOT = REPO_ROOT / "skills" / "quant-oral-to-code" / "scripts"
-if str(SCRIPT_ROOT) not in sys.path:
-    sys.path.insert(0, str(SCRIPT_ROOT))
+REPO_ROOT_SENTINELS = (".git", "docs", "skills")
+SKILL_SCRIPT_SENTINELS = ("normalize_to_duckdb.py", "context_data_helpers.py")
 
-from normalize_to_duckdb import normalize_to_duckdb
+
+def _resolve_repo_root() -> Path:
+    for candidate in (WORKSPACE_ROOT, *WORKSPACE_ROOT.parents):
+        script_root = candidate / "skills" / "quant-oral-to-code" / "scripts"
+        has_repo_sentinels = all((candidate / sentinel).exists() for sentinel in REPO_ROOT_SENTINELS)
+        has_skill_sentinels = all((script_root / sentinel).exists() for sentinel in SKILL_SCRIPT_SENTINELS)
+        if has_repo_sentinels and has_skill_sentinels:
+            return candidate
+    raise FileNotFoundError(f"Could not locate quant-oral-to-code skill root from {WORKSPACE_ROOT}")
+
+
+REPO_ROOT = _resolve_repo_root()
+SCRIPT_ROOT = REPO_ROOT / "skills" / "quant-oral-to-code" / "scripts"
+
+
+def _load_module(module_filename: str, module_name: str):
+    module_path = SCRIPT_ROOT / module_filename
+    spec = importlib.util.spec_from_file_location(module_name, module_path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"Could not load {module_filename} from {module_path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+normalize_to_duckdb = _load_module(
+    "normalize_to_duckdb.py",
+    "quant_oral_to_code_normalize_to_duckdb",
+).normalize_to_duckdb
+persist_real_data_artifacts = _load_module(
+    "context_data_helpers.py",
+    "quant_oral_to_code_context_data_helpers",
+).persist_real_data_artifacts
 
 
 PROVIDER_NAME = "$provider_name"
@@ -22,8 +53,12 @@ AUTH_METHOD = "$auth_method"
 DEFAULT_SYMBOL = "$symbol"
 DEFAULT_START_DATE = "$start_date"
 DEFAULT_END_DATE = "$end_date"
+DEFAULT_BENCHMARK = "000300"
 RAW_OUTPUT = WORKSPACE_ROOT / "data" / "raw" / "market_$provider_name.csv"
 DUCKDB_OUTPUT = WORKSPACE_ROOT / "data" / "normalized" / "market.duckdb"
+CONTEXT_REPORT_OUTPUT = WORKSPACE_ROOT / "data" / "context_fetch_report.json"
+DATA_CONTRACT_OUTPUT = WORKSPACE_ROOT / "data_contract.json"
+PROVIDER_CONTEXT_SUPPORT = json.loads("""$context_support_json""")
 
 
 def fetch_history(symbol: str, start_date: str, end_date: str) -> pd.DataFrame:
@@ -34,6 +69,8 @@ def fetch_history(symbol: str, start_date: str, end_date: str) -> pd.DataFrame:
         end_date=end_date.replace("-", ""),
         adjust="qfq",
     )
+    if df.empty:
+        raise RuntimeError(f"no daily bars returned for {symbol}")
     df = df.rename(
         columns={
             "日期": "trade_date",
@@ -45,14 +82,84 @@ def fetch_history(symbol: str, start_date: str, end_date: str) -> pd.DataFrame:
         }
     )
     df["symbol"] = symbol
+    df["trade_date"] = pd.to_datetime(df["trade_date"]).dt.strftime("%Y-%m-%d")
     return df[["symbol", "trade_date", "open", "high", "low", "close", "volume"]].copy()
 
 
-def main(symbol: str, start_date: str, end_date: str) -> dict[str, object]:
+def fetch_benchmark_series(benchmark_code: str, start_date: str, end_date: str) -> pd.DataFrame:
+    df = ak.index_zh_a_hist(
+        symbol=benchmark_code,
+        period="daily",
+        start_date=start_date.replace("-", ""),
+        end_date=end_date.replace("-", ""),
+    )
+    if df.empty:
+        raise RuntimeError(f"no benchmark series returned for {benchmark_code}")
+    df = df.rename(
+        columns={
+            "日期": "trade_date",
+            "开盘": "open",
+            "最高": "high",
+            "最低": "low",
+            "收盘": "close",
+            "成交量": "volume",
+        }
+    )
+    df["benchmark_code"] = benchmark_code
+    df["trade_date"] = pd.to_datetime(df["trade_date"]).dt.strftime("%Y-%m-%d")
+    return df[["benchmark_code", "trade_date", "open", "high", "low", "close", "volume"]].copy()
+
+
+def fetch_context_payload(
+    start_date: str,
+    end_date: str,
+    benchmark_code: str,
+) -> dict[str, object]:
+    return {
+        "benchmark_series": fetch_benchmark_series(
+            benchmark_code=benchmark_code,
+            start_date=start_date,
+            end_date=end_date,
+        )
+    }
+
+
+def main(
+    symbol: str,
+    start_date: str,
+    end_date: str,
+    benchmark_code: str = DEFAULT_BENCHMARK,
+) -> dict[str, object]:
     RAW_OUTPUT.parent.mkdir(parents=True, exist_ok=True)
-    df = fetch_history(symbol=symbol, start_date=start_date, end_date=end_date)
-    df.to_csv(RAW_OUTPUT, index=False, encoding="utf-8-sig")
-    return normalize_to_duckdb(RAW_OUTPUT, DUCKDB_OUTPUT, raw_input_format="csv", adjustment_mode="qfq")
+    history = fetch_history(symbol=symbol, start_date=start_date, end_date=end_date)
+    history.to_csv(RAW_OUTPUT, index=False, encoding="utf-8-sig")
+    normalization = normalize_to_duckdb(RAW_OUTPUT, DUCKDB_OUTPUT, raw_input_format="csv", adjustment_mode="qfq")
+    artifacts = persist_real_data_artifacts(
+        storage_target=DUCKDB_OUTPUT,
+        raw_input_format="csv",
+        provider_name=PROVIDER_NAME,
+        adjustment_mode="qfq",
+        context_payload=fetch_context_payload(
+            start_date=start_date,
+            end_date=end_date,
+            benchmark_code=benchmark_code,
+        ),
+        provider_support=PROVIDER_CONTEXT_SUPPORT,
+        selection_method="single_symbol_api",
+        contract_output_path=DATA_CONTRACT_OUTPUT,
+        context_report_output_path=CONTEXT_REPORT_OUTPUT,
+        benchmark_code=benchmark_code,
+        universe_name="single_symbol_a_share",
+    )
+    return {
+        **normalization,
+        "provider_name": PROVIDER_NAME,
+        "raw_output": str(RAW_OUTPUT),
+        "context_report_file": artifacts["context_report_file"],
+        "data_contract_file": artifacts["data_contract_file"],
+        "context_tables": artifacts["context_tables"],
+        "sample_coverage": artifacts["sample_coverage"],
+    }
 
 
 if __name__ == "__main__":
@@ -60,6 +167,12 @@ if __name__ == "__main__":
     parser.add_argument("--symbol", default=DEFAULT_SYMBOL)
     parser.add_argument("--start-date", default=DEFAULT_START_DATE)
     parser.add_argument("--end-date", default=DEFAULT_END_DATE)
+    parser.add_argument("--benchmark-code", default=DEFAULT_BENCHMARK)
     args = parser.parse_args()
-    result = main(symbol=args.symbol, start_date=args.start_date, end_date=args.end_date)
+    result = main(
+        symbol=args.symbol,
+        start_date=args.start_date,
+        end_date=args.end_date,
+        benchmark_code=args.benchmark_code,
+    )
     print(result)

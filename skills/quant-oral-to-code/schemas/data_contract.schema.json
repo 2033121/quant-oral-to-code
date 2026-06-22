@@ -134,6 +134,53 @@
     "data_hash": {
       "type": "string",
       "minLength": 1
+    },
+    "context_tables": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": true,
+        "properties": {
+          "available": {
+            "type": "boolean"
+          },
+          "table_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "row_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "source": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "available",
+          "source"
+        ]
+      }
+    },
+    "sample_coverage": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "selection_method": {
+          "type": "string",
+          "minLength": 1
+        },
+        "symbol_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "row_count": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
     }
   }
 }

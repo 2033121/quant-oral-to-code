@@ -4,6 +4,7 @@ from pathlib import Path
 
 import duckdb
 from build_data_contract import ALLOWED_RAW_INPUT_FORMATS, compute_data_hash
+from resolve_required_context import resolve_required_context
 
 
 REQUIRED_BARS_COLUMNS = {
@@ -29,7 +30,15 @@ REQUIRED_CONTRACT_FIELDS = [
     "provider_name",
     "adjustment_mode",
     "data_hash",
+    "context_tables",
+    "sample_coverage",
 ]
+RESEARCH_EVIDENCE_REQUIREMENTS = {
+    "has_oos_validation": "missing_oos_validation",
+    "has_pit_data": "missing_pit_data",
+    "has_cost_model": "missing_cost_model",
+    "has_real_equity_curve": "missing_real_equity_curve",
+}
 
 
 def _inspect_duckdb_contract(data_contract: dict[str, object] | None) -> tuple[bool, list[str]]:
@@ -151,23 +160,83 @@ def _inspect_duckdb_contract(data_contract: dict[str, object] | None) -> tuple[b
     return not reasons, reasons
 
 
+def _evaluate_required_context_coverage(
+    spec: dict[str, object] | None,
+    data_profile: dict[str, object],
+    data_contract: dict[str, object] | None,
+) -> list[str]:
+    resolved = resolve_required_context(spec if isinstance(spec, dict) else {})
+    reasons: list[str] = []
+
+    if data_profile.get("mode") == "demo_mode":
+        reasons.append("real_data_required:demo_mode_forbidden")
+
+    context_tables = {}
+    if isinstance(data_contract, dict) and isinstance(data_contract.get("context_tables"), dict):
+        context_tables = data_contract["context_tables"]
+
+    for item in resolved.get("blocking_requirements", []):
+        reasons.append(f"context_requirement_blocking:{item}")
+
+    for context_key in resolved.get("required_context_keys", []):
+        metadata = context_tables.get(context_key)
+        if not isinstance(metadata, dict):
+            reasons.append(f"context_table_missing:{context_key}")
+            continue
+        if metadata.get("available") is not True:
+            reasons.append(f"context_table_unavailable:{context_key}")
+
+    if resolved.get("requires_cross_sectional_universe") is True:
+        sample_coverage = {}
+        if isinstance(data_contract, dict) and isinstance(data_contract.get("sample_coverage"), dict):
+            sample_coverage = data_contract["sample_coverage"]
+        if sample_coverage.get("selection_method") in (None, "", "single_symbol_manual"):
+            reasons.append("cross_sectional_universe_not_verified")
+
+    return reasons
+
+
+def _collect_research_evidence_gaps(
+    data_profile: dict[str, object],
+) -> list[str]:
+    evidence = data_profile.get("research_evidence")
+    if not isinstance(evidence, dict):
+        return [f"research_evidence:{reason}" for reason in RESEARCH_EVIDENCE_REQUIREMENTS.values()]
+
+    gaps: list[str] = []
+    for field_name, reason in RESEARCH_EVIDENCE_REQUIREMENTS.items():
+        if evidence.get(field_name) is not True:
+            gaps.append(f"research_evidence:{reason}")
+    return gaps
+
+
 def _determine_claim_level(
     data_profile: dict[str, object],
     has_duckdb_contract: bool,
-) -> str:
+) -> tuple[str, list[str]]:
     mode = data_profile.get("mode")
     readiness = data_profile.get("data_readiness")
-    if mode == "full_research_mode" and readiness == "ready" and has_duckdb_contract:
-        return "research_grade_local"
-    if mode == "portable_csv_mode" and readiness == "ready" and has_duckdb_contract:
-        return "portable_backtest"
-    return "demo_only"
+    if readiness == "ready" and has_duckdb_contract:
+        if mode == "full_research_mode":
+            research_gaps = _collect_research_evidence_gaps(data_profile)
+            if not research_gaps:
+                return "research_grade_local", []
+            return "portable_backtest", [
+                "claim_downgraded:research_grade_local_requires_explicit_evidence",
+                *research_gaps,
+            ]
+        if mode == "portable_csv_mode":
+            return "portable_backtest", []
+        if mode == "demo_mode":
+            return "demo_only", []
+    return "demo_only", []
 
 
 def build_claim_report(
     review: dict[str, object],
     data_profile: dict[str, object],
     data_contract: dict[str, object] | None,
+    spec: dict[str, object] | None = None,
 ) -> dict[str, object]:
     blocking = list(review.get("blocking", []))
     warnings = list(review.get("warnings", []))
@@ -175,7 +244,10 @@ def build_claim_report(
     mode = data_profile.get("mode")
 
     has_duckdb_contract, contract_reasons = _inspect_duckdb_contract(data_contract)
-    claim_level = _determine_claim_level(data_profile, has_duckdb_contract)
+    claim_level, claim_level_reasons = _determine_claim_level(
+        data_profile, has_duckdb_contract
+    )
+    context_reasons = _evaluate_required_context_coverage(spec, data_profile, data_contract)
 
     reasons: list[str] = []
     if blocking:
@@ -184,8 +256,10 @@ def build_claim_report(
         reasons.append(f"data_readiness:{readiness}")
     if not has_duckdb_contract:
         reasons.extend(contract_reasons or ["duckdb_contract_incomplete"])
+    reasons.extend(context_reasons)
+    reasons.extend(claim_level_reasons)
 
-    if blocking or readiness != "ready" or not has_duckdb_contract:
+    if blocking or readiness != "ready" or not has_duckdb_contract or context_reasons:
         artifact_policy = "data_required_cutoff"
         decision = "cutoff"
     else:
@@ -205,6 +279,12 @@ def build_claim_report(
             "mode": mode,
             "data_readiness": readiness,
             "has_duckdb_contract": has_duckdb_contract,
+            "required_context": resolve_required_context(spec if isinstance(spec, dict) else {}),
+            "research_evidence": (
+                data_profile.get("research_evidence")
+                if isinstance(data_profile.get("research_evidence"), dict)
+                else {}
+            ),
         },
     }
 

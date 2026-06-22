@@ -37,6 +37,8 @@ TASK2_SCHEMA_PATHS = [
 
 TASK2_SCRIPT_PATHS = [
     "scripts/resolve_repo_root.py",
+    "scripts/build_disambiguation_pack.py",
+    "scripts/apply_disambiguation_answers.py",
     "scripts/check_runtime_capabilities.py",
     "scripts/build_data_contract.py",
     "scripts/build_claim_report.py",
@@ -46,6 +48,10 @@ TASK2_SCRIPT_PATHS = [
     "scripts/test_data_contract.py",
     "scripts/test_claim_gate.py",
     "scripts/test_artifact_manifest.py",
+    "scripts/test_disambiguation_flow.py",
+    "scripts/render_disambiguation_questions.py",
+    "scripts/test_render_disambiguation_questions.py",
+    "scripts/test_full_validation_disambiguation.py",
 ]
 
 REQUIRED_FILES = [
@@ -55,6 +61,7 @@ REQUIRED_FILES = [
     *[ROOT / relative_path for relative_path in TASK2_SCRIPT_PATHS],
     ROOT / "scripts" / "validate_quant_oral_to_code.py",
     ROOT / "scripts" / "test_skill_layout.py",
+    ROOT / "references" / "term_disambiguation_library.json",
 ]
 
 

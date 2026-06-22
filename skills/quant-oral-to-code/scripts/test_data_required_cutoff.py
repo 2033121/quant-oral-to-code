@@ -56,13 +56,54 @@ def test_data_required_cutoff_when_guardrail_has_blocking(tmp_path: Path):
             raw_input_format="csv",
             provider_name="manual_csv",
             adjustment_mode="qfq",
+            context_tables={
+                "security_master": {"available": True, "source": "test_fixture"},
+                "st_status": {"available": True, "source": "test_fixture"},
+                "suspension_status": {"available": True, "source": "test_fixture"},
+            },
+            sample_coverage={"selection_method": "multi_symbol_fixture"},
         ),
+        spec={"market": "A股"},
     )
 
     assert review["blocking"]
     assert claim["artifact_policy"] == "data_required_cutoff"
     assert claim["decision"] == "cutoff"
     assert any(str(reason).startswith("guardrail_blocking:") for reason in claim["reasons"])
+
+
+def test_data_required_cutoff_when_future_leakage_blocking_is_triggered(tmp_path: Path):
+    review = review_guardrails(
+        {
+            "source_prompt": "当天收盘最终站稳、次日还有溢价才算有效，然后当日收盘就进。",
+            "translation_confidence": 0.91,
+            "unresolved_terms": [],
+        }
+    )
+
+    db_path = _create_market_duckdb(tmp_path / "future_leakage_case.duckdb")
+    claim = build_claim_report(
+        review=review,
+        data_profile={"mode": "portable_csv_mode", "data_readiness": "ready"},
+        data_contract=build_data_contract(
+            storage_target=db_path,
+            raw_input_format="csv",
+            provider_name="manual_csv",
+            adjustment_mode="qfq",
+            context_tables={
+                "security_master": {"available": True, "source": "test_fixture"},
+                "st_status": {"available": True, "source": "test_fixture"},
+                "suspension_status": {"available": True, "source": "test_fixture"},
+            },
+            sample_coverage={"selection_method": "multi_symbol_fixture"},
+        ),
+        spec={"market": "A股"},
+    )
+
+    assert "future_leakage_or_hindsight_filtering" in review["blocking"]
+    assert claim["artifact_policy"] == "data_required_cutoff"
+    assert claim["decision"] == "cutoff"
+    assert "guardrail_blocking:future_leakage_or_hindsight_filtering" in claim["reasons"]
 
 
 def test_full_workspace_when_guardrail_is_clean_and_data_ready(tmp_path: Path):
@@ -91,7 +132,14 @@ def test_full_workspace_when_guardrail_is_clean_and_data_ready(tmp_path: Path):
             raw_input_format="csv",
             provider_name="manual_csv",
             adjustment_mode="qfq",
+            context_tables={
+                "security_master": {"available": True, "source": "test_fixture"},
+                "st_status": {"available": True, "source": "test_fixture"},
+                "suspension_status": {"available": True, "source": "test_fixture"},
+            },
+            sample_coverage={"selection_method": "multi_symbol_fixture"},
         ),
+        spec={"market": "A股"},
     )
 
     assert review["blocking"] == []

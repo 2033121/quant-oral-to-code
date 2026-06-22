@@ -23,12 +23,23 @@ AUTH_HINTS = {
     "username_password": "需要先准备用户名和密码，推荐通过环境变量注入。",
     "manual_export": "需要用户手工导出 CSV 或 Parquet，再进入标准化链路。",
 }
+DEFAULT_CONTEXT_KEYS = ["security_master", "st_status", "suspension_status"]
+SECTOR_CONTEXT_KEYS = ["group_membership", "benchmark_series"]
 
 
 def _render_template(template_name: str, context: dict[str, str]) -> str:
     template_path = TEMPLATE_DIR / template_name
     template = Template(template_path.read_text(encoding="utf-8"))
     return template.substitute(context)
+
+
+def _context_support_summary(provider: dict[str, object]) -> list[str]:
+    support = provider.get("supports_context_tables", {})
+    lines: list[str] = []
+    for context_key in [*DEFAULT_CONTEXT_KEYS, *SECTOR_CONTEXT_KEYS]:
+        supported = bool(isinstance(support, dict) and support.get(context_key, False))
+        lines.append(f"- {context_key}: {'supported' if supported else 'unsupported'}")
+    return lines
 
 
 def _build_setup_text(provider: dict[str, object], symbol: str, start_date: str, end_date: str) -> str:
@@ -49,10 +60,25 @@ def _build_setup_text(provider: dict[str, object], symbol: str, start_date: str,
         f"- end_date_example: {end_date}",
         "- normalized_target: data/normalized/market.duckdb",
         "- raw_cache_target: data/raw/",
+        "- context_report_target: data/context_fetch_report.json",
+        "- data_contract_target: data_contract.json",
+        "- required_real_context_default: security_master, st_status, suspension_status",
+        "- required_real_context_for_sector_semantics: group_membership, benchmark_series",
+        "",
+        "## Provider Context Coverage",
+        "",
+        *_context_support_summary(provider),
         "",
         "## Notes",
         "",
         notes.strip(),
+        "",
+        "## Real Data Gate",
+        "",
+        "- 没有真实数据时，这个 skill 只能生成 provider 指引，不会假装已经可回测。",
+        "- A 股日线策略默认要求至少具备 security_master、st_status、suspension_status。",
+        "- 如果策略语义涉及板块共振、行业强弱、横截面对比，还必须补齐 group_membership 与 benchmark_series。",
+        "- fetch_data.py 成功落库后会自动更新 data_contract.json 与 context_fetch_report.json；缺失上下文仍会被 claim gate 截断。",
         "",
     ]
     return "\n".join(summary_lines)
@@ -81,10 +107,13 @@ def generate_data_fetcher(
         "decision": decision,
         "auth": provider.get("auth"),
         "dependency": provider.get("dependency"),
+        "supports_context_tables": provider.get("supports_context_tables", {}),
         "symbol": symbol,
         "start_date": start_date,
         "end_date": end_date,
         "normalized_target": "data/normalized/market.duckdb",
+        "context_report_target": "data/context_fetch_report.json",
+        "data_contract_target": "data_contract.json",
     }
     choice_path.write_text(json.dumps(provider_choice, ensure_ascii=False, indent=2), encoding="utf-8")
     setup_path.write_text(
@@ -113,6 +142,11 @@ def generate_data_fetcher(
             "symbol": symbol,
             "start_date": start_date,
             "end_date": end_date,
+            "context_support_json": json.dumps(
+                provider.get("supports_context_tables", {}),
+                ensure_ascii=False,
+                indent=2,
+            ),
         },
     )
     fetcher_path.write_text(rendered, encoding="utf-8")

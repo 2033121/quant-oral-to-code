@@ -25,6 +25,8 @@ def build_data_contract(
     provider_name: str,
     adjustment_mode: str,
     write_disposition: str = "overwrite",
+    context_tables: dict[str, object] | None = None,
+    sample_coverage: dict[str, object] | None = None,
 ) -> dict[str, object]:
     target_path = Path(storage_target)
     if raw_input_format not in ALLOWED_RAW_INPUT_FORMATS:
@@ -49,6 +51,8 @@ def build_data_contract(
             provider_name=provider_name,
             adjustment_mode=adjustment_mode,
         ),
+        "context_tables": context_tables or {},
+        "sample_coverage": sample_coverage or {},
     }
 
 

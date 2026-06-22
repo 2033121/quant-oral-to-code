@@ -9,6 +9,8 @@ from pathlib import Path
 
 import duckdb
 
+from validate_fetched_dataset import validate_fetched_dataset
+
 
 CORE_COLUMNS = ["symbol", "trade_date", "open", "high", "low", "close", "volume"]
 NUMERIC_COLUMNS = ["open", "high", "low", "close", "volume"]
@@ -38,6 +40,10 @@ def _build_alias_lookup() -> dict[str, str]:
 
 
 ALIAS_LOOKUP = _build_alias_lookup()
+
+
+def _quote_identifier(name: str) -> str:
+    return '"' + name.replace('"', '""') + '"'
 
 
 def _detect_format(path: Path) -> str:
@@ -161,8 +167,12 @@ def _load_rows(path: Path, raw_input_format: str | None) -> tuple[list[dict[str,
 def _resolve_column_mapping(rows: list[dict[str, object]]) -> dict[str, str]:
     if not rows:
         raise ValueError("No rows found in input source")
+    return _resolve_column_mapping_from_columns(rows[0].keys())
+
+
+def _resolve_column_mapping_from_columns(source_columns: object) -> dict[str, str]:
     mapping: dict[str, str] = {}
-    for source_name in rows[0].keys():
+    for source_name in source_columns:
         canonical_name = ALIAS_LOOKUP.get(_normalize_name(str(source_name)))
         if canonical_name and canonical_name not in mapping:
             mapping[canonical_name] = str(source_name)
@@ -172,6 +182,18 @@ def _resolve_column_mapping(rows: list[dict[str, object]]) -> dict[str, str]:
             "Missing required core columns after mapping: " + ",".join(missing_columns)
         )
     return mapping
+
+
+def _read_csv_header(path: Path) -> list[str]:
+    with path.open("r", encoding="utf-8-sig", newline="") as handle:
+        reader = csv.reader(handle)
+        try:
+            header = next(reader)
+        except StopIteration as exc:
+            raise ValueError("No rows found in input source") from exc
+    if not header:
+        raise ValueError("No rows found in input source")
+    return [str(item) for item in header]
 
 
 def _parse_symbol(value: object, row_index: int) -> str:
@@ -244,6 +266,70 @@ def _prepare_rows(rows: list[dict[str, object]]) -> list[tuple[object, ...]]:
     return prepared
 
 
+def _normalize_csv_to_duckdb_fast(source_path: Path, target_path: Path) -> dict[str, object]:
+    header = _read_csv_header(source_path)
+    mapping = _resolve_column_mapping_from_columns(header)
+
+    target_path.parent.mkdir(parents=True, exist_ok=True)
+    conn = duckdb.connect(str(target_path))
+    try:
+        conn.execute('DROP TABLE IF EXISTS "bars"')
+        conn.execute(
+            f"""
+            CREATE TABLE "bars" AS
+            SELECT
+                NULLIF(trim(CAST({_quote_identifier(mapping["symbol"])} AS VARCHAR)), '') AS symbol,
+                CAST(
+                    COALESCE(
+                        try_strptime(trim(CAST({_quote_identifier(mapping["trade_date"])} AS VARCHAR)), '%Y-%m-%d'),
+                        try_strptime(trim(CAST({_quote_identifier(mapping["trade_date"])} AS VARCHAR)), '%Y-%m-%d %H:%M:%S'),
+                        try_strptime(trim(CAST({_quote_identifier(mapping["trade_date"])} AS VARCHAR)), '%Y%m%d')
+                    ) AS DATE
+                ) AS trade_date,
+                TRY_CAST(NULLIF(trim(CAST({_quote_identifier(mapping["open"])} AS VARCHAR)), '') AS DOUBLE) AS open,
+                TRY_CAST(NULLIF(trim(CAST({_quote_identifier(mapping["high"])} AS VARCHAR)), '') AS DOUBLE) AS high,
+                TRY_CAST(NULLIF(trim(CAST({_quote_identifier(mapping["low"])} AS VARCHAR)), '') AS DOUBLE) AS low,
+                TRY_CAST(NULLIF(trim(CAST({_quote_identifier(mapping["close"])} AS VARCHAR)), '') AS DOUBLE) AS close,
+                TRY_CAST(NULLIF(trim(CAST({_quote_identifier(mapping["volume"])} AS VARCHAR)), '') AS DOUBLE) AS volume
+            FROM read_csv_auto(?, header=true, all_varchar=true)
+            """
+        , [str(source_path)])
+    finally:
+        conn.close()
+
+    validation = validate_fetched_dataset(target_path)
+    if not validation.get("ok", False):
+        errors = [str(item) for item in validation.get("errors", [])]
+        for error in errors:
+            if error.startswith("duplicate_symbol_trade_date_keys:"):
+                raise ValueError("Duplicate (symbol, trade_date) key detected")
+            if error.startswith("numeric_column_has_non_finite_values:"):
+                column_name = error.split(":")[1]
+                raise ValueError(f"Invalid {column_name}: non-finite value")
+            if error.startswith("core_column_has_nulls:trade_date:"):
+                raise ValueError("Invalid trade_date")
+            if error.startswith("core_column_has_nulls:open:"):
+                raise ValueError("Invalid open")
+            if error.startswith("core_column_has_nulls:high:"):
+                raise ValueError("Invalid high")
+            if error.startswith("core_column_has_nulls:low:"):
+                raise ValueError("Invalid low")
+            if error.startswith("core_column_has_nulls:close:"):
+                raise ValueError("Invalid close")
+            if error.startswith("core_column_has_nulls:volume:"):
+                raise ValueError("Invalid volume")
+        raise ValueError("; ".join(errors))
+
+    return {
+        "storage_format": "duckdb",
+        "storage_target": str(target_path),
+        "bars_table_name": "bars",
+        "raw_input_format": "csv",
+        "row_count": int(validation.get("row_count", 0) or 0),
+        "normalized_columns": list(CORE_COLUMNS),
+    }
+
+
 def normalize_to_duckdb(
     input_path: str | Path,
     db_path: str | Path,
@@ -252,7 +338,13 @@ def normalize_to_duckdb(
 ) -> dict[str, object]:
     source_path = Path(input_path)
     target_path = Path(db_path)
-    rows, detected_format = _load_rows(source_path, raw_input_format=raw_input_format)
+    format_name = raw_input_format or _detect_format(source_path)
+    if format_name == "csv":
+        result = _normalize_csv_to_duckdb_fast(source_path, target_path)
+        result["adjustment_mode"] = adjustment_mode
+        return result
+
+    rows, detected_format = _load_rows(source_path, raw_input_format=format_name)
     prepared_rows = _prepare_rows(rows)
 
     if not prepared_rows:

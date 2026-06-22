@@ -1,0 +1,835 @@
+{
+  "龙头": {
+    "category": "selection_strength",
+    "search_hints": [
+      "A股 龙头股 定义",
+      "A股 龙头股 常见量化代理"
+    ],
+    "choices": [
+      {
+        "id": "leader_return_rank",
+        "label": "区间涨幅领先",
+        "description": "最近 N 日涨幅位于板块或候选池前列，适合用日线数据近似“龙头”强度。",
+        "rule": {
+          "kind": "rolling_return_rank",
+          "lookback": 20,
+          "top_n": 3
+        },
+        "requires": [
+          "daily_ohlcv"
+        ]
+      },
+      {
+        "id": "leader_breakout_strength",
+        "label": "突破后相对强度领先",
+        "description": "先发生平台突破，再要求相对强度排名靠前，更偏趋势龙头。",
+        "rule": {
+          "kind": "breakout_with_rank_filter",
+          "lookback": 20,
+          "top_n": 5
+        },
+        "requires": [
+          "daily_ohlcv"
+        ]
+      },
+      {
+        "id": "leader_manual_definition",
+        "label": "用户自己定义",
+        "description": "保留“龙头”原意，由用户补充更具体的标准。",
+        "rule": {
+          "kind": "manual_definition_required"
+        },
+        "requires": [
+          "user_definition"
+        ]
+      }
+    ]
+  },
+  "辨识度": {
+    "category": "selection_strength",
+    "search_hints": [
+      "A股 辨识度 定义",
+      "A股 辨识度 龙头 量化"
+    ],
+    "choices": [
+      {
+        "id": "recognition_volume_amount",
+        "label": "成交额分位高",
+        "description": "用最近 N 日成交额或换手率分位数较高近似“市场关注度”。",
+        "rule": {
+          "kind": "liquidity_quantile_filter",
+          "metric": "amount",
+          "quantile": 0.8
+        },
+        "requires": [
+          "daily_ohlcv",
+          "daily_amount_optional"
+        ]
+      },
+      {
+        "id": "recognition_breakout_participation",
+        "label": "突破时放量参与度高",
+        "description": "突破当天成交量相对平台期明显提升，近似“辨识度被市场看见”。",
+        "rule": {
+          "kind": "volume_ratio_filter",
+          "lookback": 20,
+          "min_ratio": 1.5
+        },
+        "requires": [
+          "daily_ohlcv"
+        ]
+      }
+    ]
+  },
+  "带动性": {
+    "category": "selection_strength",
+    "search_hints": [
+      "A股 带动性 定义",
+      "A股 龙头 带动性 板块 共振"
+    ],
+    "choices": [
+      {
+        "id": "leading_sector_relative_strength",
+        "label": "相对板块领先",
+        "description": "个股涨幅明显领先所处分组或板块，作为“带动性”的日线代理。",
+        "rule": {
+          "kind": "group_relative_strength",
+          "lookback": 10,
+          "min_excess_return": 0.03
+        },
+        "requires": [
+          "daily_ohlcv",
+          "group_membership"
+        ]
+      },
+      {
+        "id": "leading_followthrough",
+        "label": "突破后持续强于基准",
+        "description": "突破后连续几日强于指数或板块，近似“能带队”。",
+        "rule": {
+          "kind": "followthrough_strength",
+          "lookback": 5,
+          "benchmark": "index_or_group"
+        },
+        "requires": [
+          "daily_ohlcv",
+          "benchmark_series"
+        ]
+      }
+    ]
+  },
+  "筹码": {
+    "category": "data_sensitive",
+    "search_hints": [
+      "A股 筹码分布 定义",
+      "A股 筹码集中 量化 近似"
+    ],
+    "choices": [
+      {
+        "id": "chip_platform_consolidation",
+        "label": "平台整理近似筹码沉淀",
+        "description": "用窄幅震荡 + 缩量整理近似“筹码沉淀”，不依赖真实筹码分布数据。",
+        "rule": {
+          "kind": "consolidation_filter",
+          "lookback": 10,
+          "max_range_pct": 0.12,
+          "max_volume_ratio": 1.0
+        },
+        "requires": [
+          "daily_ohlcv"
+        ]
+      },
+      {
+        "id": "chip_distribution_external",
+        "label": "使用外部筹码分布数据",
+        "description": "保留原意，但需要用户明确筹码分布字段来源和口径。",
+        "rule": {
+          "kind": "external_chip_distribution_required"
+        },
+        "requires": [
+          "chip_distribution_dataset"
+        ]
+      }
+    ]
+  },
+  "承接": {
+    "category": "data_sensitive",
+    "search_hints": [
+      "A股 承接 定义",
+      "A股 承接强 量化"
+    ],
+    "choices": [
+      {
+        "id": "support_close_location",
+        "label": "回落后收盘位置高",
+        "description": "用 K 线回落但收盘仍位于当日高位区域近似“承接住了”。",
+        "rule": {
+          "kind": "close_location_value_filter",
+          "min_clv": 0.65
+        },
+        "requires": [
+          "daily_ohlcv"
+        ]
+      },
+      {
+        "id": "support_intraday_vwap",
+        "label": "盘中不破均价线",
+        "description": "更贴近原意，但需要分钟级或逐笔数据。",
+        "rule": {
+          "kind": "intraday_vwap_support",
+          "min_bars_above_vwap": 3
+        },
+        "requires": [
+          "minute_or_tick"
+        ]
+      }
+    ]
+  },
+  "净流入": {
+    "category": "data_sensitive",
+    "search_hints": [
+      "A股 主力净流入 定义",
+      "A股 净流入 口径"
+    ],
+    "choices": [
+      {
+        "id": "net_inflow_external",
+        "label": "使用外部净流入字段",
+        "description": "保留原意，但必须明确是主力、超大单还是全市场净流入口径。",
+        "rule": {
+          "kind": "external_net_inflow_required"
+        },
+        "requires": [
+          "capital_flow_dataset"
+        ]
+      },
+      {
+        "id": "net_inflow_volume_price_proxy",
+        "label": "量价正反馈代理",
+        "description": "用放量上涨、收盘接近高位等量价组合近似资金净流入。",
+        "rule": {
+          "kind": "volume_price_strength_proxy",
+          "min_volume_ratio": 1.5,
+          "min_clv": 0.65
+        },
+        "requires": [
+          "daily_ohlcv"
+        ]
+      }
+    ]
+  },
+  "中枢": {
+    "category": "structure",
+    "search_hints": [
+      "缠论 中枢 定义",
+      "缠论 中枢 量化 近似"
+    ],
+    "choices": [
+      {
+        "id": "pivot_overlap_zone",
+        "label": "波段重叠区近似",
+        "description": "用最近 N 根 K 线高低点重叠区近似“中枢”。",
+        "rule": {
+          "kind": "swing_overlap_zone",
+          "lookback": 9
+        },
+        "requires": [
+          "daily_ohlcv"
+        ]
+      },
+      {
+        "id": "box_consolidation_zone",
+        "label": "箱体整理区近似",
+        "description": "把中枢降级为箱体平台处理，适合先做简化回测。",
+        "rule": {
+          "kind": "box_consolidation",
+          "lookback": 12
+        },
+        "requires": [
+          "daily_ohlcv"
+        ]
+      }
+    ]
+  },
+  "背驰": {
+    "category": "structure",
+    "search_hints": [
+      "缠论 背驰 定义",
+      "背驰 MACD 量化"
+    ],
+    "choices": [
+      {
+        "id": "macd_divergence_proxy",
+        "label": "MACD 背离近似",
+        "description": "用价格创新低但 MACD 柱体/DIFF 不创新低近似“背驰”。",
+        "rule": {
+          "kind": "macd_divergence_proxy",
+          "lookback": 20
+        },
+        "requires": [
+          "daily_ohlcv"
+        ]
+      },
+      {
+        "id": "rsi_divergence_proxy",
+        "label": "RSI 背离近似",
+        "description": "用 RSI 背离做简化代理，适合轻量回测框架。",
+        "rule": {
+          "kind": "rsi_divergence_proxy",
+          "lookback": 14
+        },
+        "requires": [
+          "daily_ohlcv"
+        ]
+      }
+    ]
+  },
+  "分歧转一致": {
+    "category": "structure",
+    "search_hints": [
+      "A股 分歧转一致 定义",
+      "弱转强 分歧转一致 量化"
+    ],
+    "choices": [
+      {
+        "id": "pullback_then_breakout",
+        "label": "回踩不破后再突破",
+        "description": "用突破后回踩不破关键位，再次上破作为日线代理。",
+        "rule": {
+          "kind": "retest_then_breakout",
+          "lookback": 20,
+          "retest_tolerance": 0.02
+        },
+        "requires": [
+          "daily_ohlcv"
+        ]
+      },
+      {
+        "id": "intraday_reclaim",
+        "label": "盘中回落后重新站回关键位",
+        "description": "更贴近交易原意，但需要分钟级数据和明确关键位定义。",
+        "rule": {
+          "kind": "intraday_reclaim_level",
+          "confirm_bars": 2
+        },
+        "requires": [
+          "minute_or_tick"
+        ]
+      }
+    ]
+  },
+  "三买结构": {
+    "category": "structure",
+    "search_hints": [
+      "缠论 三买结构 定义",
+      "缠论 三买 量化 近似"
+    ],
+    "choices": [
+      {
+        "id": "third_buy_retest_breakout",
+        "label": "回踩关键区后再突破近似三买",
+        "description": "用突破后回踩不破关键区、再次上行近似缠论三买结构。",
+        "rule": {
+          "kind": "retest_then_breakout",
+          "lookback": 20,
+          "retest_tolerance": 0.02
+        },
+        "requires": [
+          "daily_ohlcv"
+        ]
+      },
+      {
+        "id": "third_buy_higher_tf_trend",
+        "label": "高级别趋势向上 + 次级别回踩再起",
+        "description": "保留“先看高级别方向”的要求，用长期均线趋势过滤配合回踩再突破实现。",
+        "rule": {
+          "kind": "higher_timeframe_trend_filter",
+          "trend_ma": 60
+        },
+        "requires": [
+          "daily_ohlcv"
+        ]
+      }
+    ]
+  },
+  "关键线": {
+    "category": "structure",
+    "search_hints": [
+      "量学 关键线 定义",
+      "量学 突破 关键线 回踩 量化"
+    ],
+    "choices": [
+      {
+        "id": "key_line_prev_high",
+        "label": "前高线近似关键线",
+        "description": "把关键线明确成前高突破线，回踩不破后再次上行。",
+        "rule": {
+          "kind": "retest_then_breakout",
+          "lookback": 20,
+          "retest_tolerance": 0.02
+        },
+        "requires": [
+          "daily_ohlcv"
+        ]
+      },
+      {
+        "id": "key_line_ma20",
+        "label": "20日均线近似关键线",
+        "description": "把关键线明确成中期均线支撑，用于简化量学回踩确认。",
+        "rule": {
+          "kind": "support_above_ma",
+          "ma": 20
+        },
+        "requires": [
+          "daily_ohlcv"
+        ]
+      }
+    ]
+  },
+  "弱转强": {
+    "category": "structure",
+    "search_hints": [
+      "A股 弱转强 定义",
+      "A股 弱转强 量化"
+    ],
+    "choices": [
+      {
+        "id": "weak_to_strong_reclaim",
+        "label": "回落后重新站回关键位",
+        "description": "用回踩后重新站上突破位或均线，近似弱转强。",
+        "rule": {
+          "kind": "reclaim_breakout_level",
+          "lookback": 20
+        },
+        "requires": [
+          "daily_ohlcv"
+        ]
+      },
+      {
+        "id": "weak_to_strong_gap_followthrough",
+        "label": "转强日高开并延续",
+        "description": "用高开+收盘强于前高近似弱转强确认。",
+        "rule": {
+          "kind": "gap_open_filter",
+          "min_gap_pct": 0.01
+        },
+        "requires": [
+          "daily_ohlcv"
+        ]
+      }
+    ]
+  },
+  "龙回头": {
+    "category": "structure",
+    "search_hints": [
+      "A股 龙回头 定义",
+      "A股 龙回头 二波 量化"
+    ],
+    "choices": [
+      {
+        "id": "dragon_return_retest",
+        "label": "主升后回踩关键位再起",
+        "description": "用一段强势上涨后回踩关键位不破，再次转强近似“龙回头”。",
+        "rule": {
+          "kind": "retest_then_breakout",
+          "lookback": 30,
+          "retest_tolerance": 0.03
+        },
+        "requires": [
+          "daily_ohlcv"
+        ]
+      },
+      {
+        "id": "dragon_return_above_trend_ma",
+        "label": "强势股回踩趋势线再上",
+        "description": "保留主升后的回踩语义，用趋势均线支撑近似龙回头。",
+        "rule": {
+          "kind": "support_above_ma",
+          "ma": 20
+        },
+        "requires": [
+          "daily_ohlcv"
+        ]
+      }
+    ]
+  },
+  "二波": {
+    "category": "structure",
+    "search_hints": [
+      "A股 二波 定义",
+      "二波启动 量化 近似"
+    ],
+    "choices": [
+      {
+        "id": "second_leg_breakout",
+        "label": "首次拉升后整理再突破",
+        "description": "用首波上涨、平台整理、二次突破近似“二波”。",
+        "rule": {
+          "kind": "retest_then_breakout",
+          "lookback": 25,
+          "retest_tolerance": 0.02
+        },
+        "requires": [
+          "daily_ohlcv"
+        ]
+      },
+      {
+        "id": "second_leg_gap_followthrough",
+        "label": "回踩后高开延续",
+        "description": "用回踩结束后高开并延续近似二波再次启动。",
+        "rule": {
+          "kind": "gap_open_filter",
+          "min_gap_pct": 0.015
+        },
+        "requires": [
+          "daily_ohlcv"
+        ]
+      }
+    ]
+  },
+  "情绪冰点": {
+    "category": "selection_strength",
+    "search_hints": [
+      "A股 情绪冰点 定义",
+      "A股 情绪冰点 量化 代理"
+    ],
+    "choices": [
+      {
+        "id": "emotion_low_volatility_proxy",
+        "label": "缩量低波动代理",
+        "description": "用近期缩量、波动收敛近似情绪退潮后的冰点环境。",
+        "rule": {
+          "kind": "consolidation_filter",
+          "lookback": 8,
+          "max_range_pct": 0.08,
+          "max_volume_ratio": 0.9
+        },
+        "requires": [
+          "daily_ohlcv"
+        ]
+      },
+      {
+        "id": "emotion_index_drawdown_proxy",
+        "label": "基准短期回撤后企稳代理",
+        "description": "用板块或指数短期明显回撤后止跌，近似情绪冰点。",
+        "rule": {
+          "kind": "benchmark_drawdown_proxy",
+          "lookback": 10,
+          "min_drawdown_pct": 0.08
+        },
+        "requires": [
+          "benchmark_series"
+        ]
+      }
+    ]
+  },
+  "板块共振": {
+    "category": "selection_strength",
+    "search_hints": [
+      "A股 板块共振 定义",
+      "A股 板块共振 量化"
+    ],
+    "choices": [
+      {
+        "id": "sector_relative_strength_resonance",
+        "label": "个股与板块同步转强",
+        "description": "要求个股和所属板块同时走强，近似“板块共振”。",
+        "rule": {
+          "kind": "group_relative_strength",
+          "lookback": 5,
+          "min_excess_return": 0.02
+        },
+        "requires": [
+          "daily_ohlcv",
+          "group_membership",
+          "benchmark_series"
+        ]
+      },
+      {
+        "id": "sector_breakout_confirmation",
+        "label": "板块突破确认",
+        "description": "用板块指数突破配合个股突破近似共振。",
+        "rule": {
+          "kind": "sector_breakout_confirmation",
+          "lookback": 20
+        },
+        "requires": [
+          "group_membership",
+          "benchmark_series"
+        ]
+      }
+    ]
+  },
+  "卡位": {
+    "category": "selection_strength",
+    "search_hints": [
+      "A股 卡位 定义",
+      "A股 卡位 龙头 量化"
+    ],
+    "choices": [
+      {
+        "id": "rank_improvement_proxy",
+        "label": "相对强度排名上升",
+        "description": "用最近一段时间相对强度排名明显上升，近似“卡位成功”。",
+        "rule": {
+          "kind": "rank_improvement_proxy",
+          "lookback": 10
+        },
+        "requires": [
+          "daily_ohlcv",
+          "group_membership"
+        ]
+      },
+      {
+        "id": "breakout_before_peers",
+        "label": "先于同组突破",
+        "description": "用个股先于同组或板块内其他标的突破，近似卡位。",
+        "rule": {
+          "kind": "early_breakout_proxy",
+          "lookback": 20
+        },
+        "requires": [
+          "daily_ohlcv",
+          "group_membership"
+        ]
+      }
+    ]
+  },
+  "换手龙": {
+    "category": "selection_strength",
+    "search_hints": [
+      "A股 换手龙 定义",
+      "换手龙 量化 代理"
+    ],
+    "choices": [
+      {
+        "id": "turnover_liquidity_proxy",
+        "label": "高换手高成交代理",
+        "description": "用高换手和高成交额近似“换手龙”的参与度。",
+        "rule": {
+          "kind": "liquidity_quantile_filter",
+          "metric": "turnover_or_amount",
+          "quantile": 0.85
+        },
+        "requires": [
+          "daily_ohlcv",
+          "turnover_or_amount"
+        ]
+      },
+      {
+        "id": "turnover_breakout_proxy",
+        "label": "放量突破代理",
+        "description": "用突破时显著放量近似换手龙启动。",
+        "rule": {
+          "kind": "volume_ratio_filter",
+          "lookback": 15,
+          "min_ratio": 2.0
+        },
+        "requires": [
+          "daily_ohlcv"
+        ]
+      }
+    ]
+  },
+  "放量确认": {
+    "category": "selection_strength",
+    "search_hints": [
+      "A股 放量确认 定义",
+      "放量突破 量化"
+    ],
+    "choices": [
+      {
+        "id": "volume_ratio_confirmation",
+        "label": "量比放大确认",
+        "description": "用突破日成交量相对过去 N 日均量放大来定义放量确认。",
+        "rule": {
+          "kind": "volume_ratio_filter",
+          "lookback": 20,
+          "min_ratio": 1.8
+        },
+        "requires": [
+          "daily_ohlcv"
+        ]
+      },
+      {
+        "id": "amount_quantile_confirmation",
+        "label": "成交额分位确认",
+        "description": "用成交额进入近期高分位数近似放量确认。",
+        "rule": {
+          "kind": "liquidity_quantile_filter",
+          "metric": "amount",
+          "quantile": 0.85
+        },
+        "requires": [
+          "daily_ohlcv",
+          "daily_amount_optional"
+        ]
+      }
+    ]
+  },
+  "放量": {
+    "category": "selection_strength",
+    "search_hints": [
+      "A股 放量 定义",
+      "A股 放量突破 量化"
+    ],
+    "choices": [
+      {
+        "id": "volume_ratio_confirmation",
+        "label": "量比放大确认",
+        "description": "用突破日成交量相对过去 N 日均量放大来定义放量。",
+        "rule": {
+          "kind": "volume_ratio_filter",
+          "lookback": 20,
+          "min_ratio": 1.8
+        },
+        "requires": [
+          "daily_ohlcv"
+        ]
+      },
+      {
+        "id": "amount_quantile_confirmation",
+        "label": "成交额分位确认",
+        "description": "用成交额进入近期高分位数近似放量。",
+        "rule": {
+          "kind": "liquidity_quantile_filter",
+          "metric": "amount",
+          "quantile": 0.85
+        },
+        "requires": [
+          "daily_ohlcv",
+          "daily_amount_optional"
+        ]
+      }
+    ]
+  },
+  "企稳": {
+    "category": "structure",
+    "search_hints": [
+      "A股 企稳 定义",
+      "A股 企稳 量化"
+    ],
+    "choices": [
+      {
+        "id": "support_above_ma20",
+        "label": "站上20日均线近似企稳",
+        "description": "用价格重新站上中期均线近似企稳。",
+        "rule": {
+          "kind": "support_above_ma",
+          "ma": 20
+        },
+        "requires": [
+          "daily_ohlcv"
+        ]
+      },
+      {
+        "id": "high_close_stabilization",
+        "label": "收盘回到高位区近似企稳",
+        "description": "用收盘位置回到当日高位区近似止跌企稳。",
+        "rule": {
+          "kind": "close_location_value_filter",
+          "min_clv": 0.7
+        },
+        "requires": [
+          "daily_ohlcv"
+        ]
+      }
+    ]
+  },
+  "竞价": {
+    "category": "intraday",
+    "search_hints": [
+      "A股 集合竞价 定义",
+      "集合竞价 弱转强 量化"
+    ],
+    "choices": [
+      {
+        "id": "auction_gap_open_proxy",
+        "label": "高开缺口代理",
+        "description": "不用真实竞价明细，仅用次日高开幅度近似竞价强弱。",
+        "rule": {
+          "kind": "gap_open_filter",
+          "min_gap_pct": 0.01
+        },
+        "requires": [
+          "daily_ohlcv"
+        ]
+      },
+      {
+        "id": "auction_detail_required",
+        "label": "使用真实竞价数据",
+        "description": "保留原意，需要集合竞价成交/委托明细数据。",
+        "rule": {
+          "kind": "auction_detail_required"
+        },
+        "requires": [
+          "auction_dataset"
+        ]
+      }
+    ]
+  },
+  "分时": {
+    "category": "intraday",
+    "search_hints": [
+      "A股 分时 量化",
+      "分钟级 回测 分时 定义"
+    ],
+    "choices": [
+      {
+        "id": "intraday_minutes_required",
+        "label": "使用分钟级数据",
+        "description": "保留原意，明确使用 1m/5m 等分钟级数据做回测。",
+        "rule": {
+          "kind": "intraday_granularity_required",
+          "granularity": "5m"
+        },
+        "requires": [
+          "minute_or_tick"
+        ]
+      },
+      {
+        "id": "daily_proxy_disable_intraday",
+        "label": "降级为日线代理",
+        "description": "不做真实分时，改用日线突破/回踩代理。",
+        "rule": {
+          "kind": "daily_proxy_requested"
+        },
+        "requires": [
+          "daily_ohlcv"
+        ]
+      }
+    ]
+  },
+  "均价线": {
+    "category": "intraday",
+    "search_hints": [
+      "A股 均价线 定义",
+      "分时均价线 VWAP 量化"
+    ],
+    "choices": [
+      {
+        "id": "vwap_proxy",
+        "label": "VWAP 近似",
+        "description": "把均价线明确成 VWAP 或成交额/成交量均价。",
+        "rule": {
+          "kind": "vwap_support"
+        },
+        "requires": [
+          "minute_or_tick"
+        ]
+      },
+      {
+        "id": "daily_close_strength_proxy",
+        "label": "收盘强度代理",
+        "description": "若没有分时数据，可暂时降级为收盘位于日内高位。",
+        "rule": {
+          "kind": "close_location_value_filter",
+          "min_clv": 0.65
+        },
+        "requires": [
+          "daily_ohlcv"
+        ]
+      }
+    ]
+  }
+}

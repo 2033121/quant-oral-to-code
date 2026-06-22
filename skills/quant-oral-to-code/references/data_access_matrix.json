@@ -1,5 +1,5 @@
 {
-  "version": "2026-06-22",
+  "version": "2026-06-23",
   "default_policy": {
     "prefer_zero_setup_first": true,
     "normalized_storage": "data/normalized/market.duckdb",
@@ -12,9 +12,16 @@
       "auth": "none",
       "supports_history_bars": true,
       "supports_intraday": false,
+      "supports_context_tables": {
+        "security_master": false,
+        "st_status": false,
+        "suspension_status": false,
+        "group_membership": false,
+        "benchmark_series": true
+      },
       "decision_default": "generated_fetcher",
       "dependency": "akshare",
-      "notes": "零门槛优先默认项，适合 A 股日线历史行情。"
+      "notes": "零门槛优先选项，适合 A 股日线历史行情。"
     },
     {
       "name": "efinance",
@@ -22,9 +29,16 @@
       "auth": "none",
       "supports_history_bars": true,
       "supports_intraday": true,
+      "supports_context_tables": {
+        "security_master": false,
+        "st_status": false,
+        "suspension_status": false,
+        "group_membership": false,
+        "benchmark_series": true
+      },
       "decision_default": "generated_fetcher",
       "dependency": "efinance",
-      "notes": "东财系零门槛备选，适合快速拉股票与 ETF 历史行情。"
+      "notes": "东方财富公开接口，适合快速抓取个股与 ETF 历史行情。"
     },
     {
       "name": "adata",
@@ -32,9 +46,16 @@
       "auth": "none",
       "supports_history_bars": true,
       "supports_intraday": true,
+      "supports_context_tables": {
+        "security_master": false,
+        "st_status": false,
+        "suspension_status": false,
+        "group_membership": false,
+        "benchmark_series": false
+      },
       "decision_default": "generated_fetcher",
       "dependency": "adata",
-      "notes": "多数据源聚合备选，适合做数据落地。"
+      "notes": "多数据源聚合备选，适合先拿到行情后再补全上下文。"
     },
     {
       "name": "baostock",
@@ -42,9 +63,16 @@
       "auth": "anonymous",
       "supports_history_bars": true,
       "supports_intraday": false,
+      "supports_context_tables": {
+        "security_master": true,
+        "st_status": false,
+        "suspension_status": true,
+        "group_membership": false,
+        "benchmark_series": true
+      },
       "decision_default": "generated_fetcher",
       "dependency": "baostock",
-      "notes": "匿名登录的兜底历史行情源。"
+      "notes": "匿名登录的公共历史数据源，可部分补上市状态与停牌信息。"
     },
     {
       "name": "tushare",
@@ -52,9 +80,16 @@
       "auth": "token",
       "supports_history_bars": true,
       "supports_intraday": false,
+      "supports_context_tables": {
+        "security_master": true,
+        "st_status": true,
+        "suspension_status": true,
+        "group_membership": true,
+        "benchmark_series": true
+      },
       "decision_default": "generated_fetcher",
       "dependency": "tushare",
-      "notes": "用户愿意注册并提供 token 时可升级。"
+      "notes": "需要 token，适合完整 A 股研究级上下文抓取。"
     },
     {
       "name": "jqdatasdk",
@@ -62,9 +97,16 @@
       "auth": "username_password",
       "supports_history_bars": true,
       "supports_intraday": true,
+      "supports_context_tables": {
+        "security_master": true,
+        "st_status": true,
+        "suspension_status": true,
+        "group_membership": true,
+        "benchmark_series": true
+      },
       "decision_default": "generated_fetcher",
       "dependency": "jqdatasdk",
-      "notes": "研究型账号路线，适合有聚宽认证的用户。"
+      "notes": "需要聚宽账号认证，适合完整上下文与板块语义相关研究。"
     },
     {
       "name": "manual_csv",
@@ -72,9 +114,16 @@
       "auth": "manual_export",
       "supports_history_bars": true,
       "supports_intraday": true,
+      "supports_context_tables": {
+        "security_master": false,
+        "st_status": false,
+        "suspension_status": false,
+        "group_membership": false,
+        "benchmark_series": false
+      },
       "decision_default": "data_required_cutoff",
       "dependency": "none",
-      "notes": "要求用户手工导出 CSV/Parquet 后进入可移植数据导入链路。"
+      "notes": "只表示用户已有手工导出的行情文件，默认仍然缺上下文，不直接放行。"
     }
   ],
   "fallback_order": [

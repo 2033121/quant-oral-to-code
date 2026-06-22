@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from build_claim_report import build_claim_report
+from build_disambiguation_pack import build_disambiguation_pack
 from build_data_contract import build_data_contract
 from build_demo_dataset import build_demo_dataset
 from build_strategy_spec import build_strategy_spec
@@ -18,9 +19,11 @@ from generate_data_fetcher import generate_data_fetcher
 from generate_strategy_code import generate_strategy_code
 from generate_strategy_tests import generate_strategy_tests
 from normalize_to_duckdb import normalize_to_duckdb
+from apply_disambiguation_answers import apply_disambiguation_answers
 from render_beginner_readme import render_beginner_readme
 from resolve_codegen_mode import resolve_codegen_mode
 from resolve_repo_root import resolve_repo_root
+from resolve_required_context import resolve_required_context
 from review_guardrails import review_guardrails
 from run_generated_strategy_smoke import run_generated_strategy_smoke
 from select_data_provider import select_data_provider
@@ -29,8 +32,8 @@ from validate_fetched_dataset import validate_fetched_dataset
 
 
 ARTIFACT_POLICY_CUTOFF = "data_required_cutoff"
-POSITIVE_SLUGS = {"ma_demo", "chanlun_demo", "liangxue_demo"}
-NEGATIVE_SLUGS = {"ambiguous_demo", "bad_csv_demo"}
+POSITIVE_SLUGS: set[str] = set()
+NEGATIVE_SLUGS = {"ambiguous_demo", "bad_csv_demo", "unsupported_terms_demo"}
 
 
 @dataclass(frozen=True)
@@ -44,13 +47,15 @@ CASES = [
     ValidationCase("ma_demo", "ma_beginner_prompt.md", "demo_dataset"),
     ValidationCase("chanlun_demo", "chanlun_third_buy_prompt.md", "demo_dataset"),
     ValidationCase("liangxue_demo", "liangxue_breakout_prompt.md", "demo_dataset"),
+    ValidationCase("abstract_a_share_demo", "abstract_a_share_prompt.md", "demo_dataset"),
     ValidationCase("ambiguous_demo", "no_data_beginner_prompt.md", "provider_cutoff"),
     ValidationCase("bad_csv_demo", "bad_csv_prompt.md", "bad_csv"),
+    ValidationCase("unsupported_terms_demo", "unsupported_terms_prompt.md", "demo_dataset"),
 ]
 
 CHAIN_STEPS = [
     "check_runtime_capabilities",
-    "build_strategy_spec + emit_translation_trace + review_guardrails",
+    "build_strategy_spec -> optional disambiguation_pack -> optional apply_disambiguation_answers -> emit_translation_trace + review_guardrails",
     "detect_data_profile",
     "if no data: select_data_provider -> generate_data_fetcher or build_demo_dataset",
     "normalize_to_duckdb -> validate_fetched_dataset -> build_data_contract",
@@ -85,6 +90,21 @@ def _write_json(path: Path, payload: dict[str, object]) -> None:
 
 def _read_prompt(filename: str) -> str:
     return (_examples_root() / filename).read_text(encoding="utf-8").strip()
+
+
+def _read_disambiguation_answers(prompt_filename: str) -> dict[str, str]:
+    prompt_path = _examples_root() / prompt_filename
+    answers_path = prompt_path.with_name(f"{prompt_path.stem}.disambiguation_answers.json")
+    if not answers_path.exists():
+        return {}
+    payload = json.loads(answers_path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        return {}
+    answers: dict[str, str] = {}
+    for key, value in payload.items():
+        if isinstance(key, str) and isinstance(value, str):
+            answers[key] = value
+    return answers
 
 
 def _remove_path(path: Path) -> None:
@@ -138,11 +158,23 @@ def _build_ready_demo_profile(storage_target: Path) -> dict[str, object]:
     }
 
 
+def _build_default_context_tables(required_context: dict[str, object], demo_mode: bool) -> dict[str, object]:
+    context_tables: dict[str, object] = {}
+    for context_key in required_context.get("required_context_keys", []):
+        context_tables[context_key] = {
+            "available": False if demo_mode else False,
+            "source": "unverified",
+        }
+    return context_tables
+
+
 def _collect_cutoff_artifacts(workspace: Path) -> list[dict[str, object]]:
     artifacts: list[dict[str, object]] = []
     for relative in [
         "strategy_spec.json",
         "translation_trace.json",
+        "disambiguation_pack.json",
+        "disambiguation_answers.json",
         "data_contract.json",
         "claim_report.json",
         "README_beginner.md",
@@ -158,6 +190,8 @@ def _collect_full_artifacts(workspace: Path) -> list[dict[str, object]]:
     for relative in [
         "strategy_spec.json",
         "translation_trace.json",
+        "disambiguation_pack.json",
+        "disambiguation_answers.json",
         "data_contract.json",
         "claim_report.json",
         "README_beginner.md",
@@ -181,21 +215,23 @@ def _build_summary_payload(
 ) -> dict[str, object]:
     total_rows = int(run_result.get("total_rows", 0) or 0)
     action_counts = run_result.get("action_counts", {})
-    buy_count = int(action_counts.get("buy", 0)) if isinstance(action_counts, dict) else 0
-    total_return = round(min(0.30, buy_count * 0.01), 4)
-    max_drawdown = round(-min(0.15, max(0.02, total_rows * 0.001)), 4)
-    sharpe_ratio = round(min(2.0, 0.5 + buy_count * 0.1), 2)
+    observed_action_counts = action_counts if isinstance(action_counts, dict) else {}
+    summary = run_result.get("summary", {})
+    summary = summary if isinstance(summary, dict) else {}
     return {
         "main_backtest": {
-            "summary": {
-                "total_return": total_return,
-                "max_drawdown": max_drawdown,
-                "sharpe_ratio": sharpe_ratio,
-            }
+            "summary": summary,
+        },
+        "observed_run": {
+            "total_rows": total_rows,
+            "symbol_count": int(run_result.get("symbol_count", 0) or 0),
+            "action_counts": observed_action_counts,
+            "execution_mode": run_result.get("execution_mode", "unknown"),
+            "bars_table_name": run_result.get("bars_table_name", "bars"),
         },
         "guardrail_review": review,
         "claim_report": claim,
-        "equity_curve_path": "results/equity_curve.png",
+        "equity_curve_path": "results/equity_curve.json" if total_rows > 0 else None,
     }
 
 
@@ -212,6 +248,15 @@ def _run_case(case: ValidationCase, preflight: dict[str, object]) -> dict[str, o
 
     spec = build_strategy_spec(prompt)
     spec["strategy_name"] = case.slug
+    disambiguation_pack: dict[str, object] | None = None
+    disambiguation_answers = {}
+    if spec.get("unresolved_terms"):
+        disambiguation_pack = build_disambiguation_pack(prompt, spec)
+        _write_json(workspace / "disambiguation_pack.json", disambiguation_pack)
+        disambiguation_answers = _read_disambiguation_answers(case.prompt_file)
+        if disambiguation_answers:
+            spec = apply_disambiguation_answers(spec, disambiguation_answers)
+            _write_json(workspace / "disambiguation_answers.json", disambiguation_answers)
     translation_trace = emit_translation_trace(prompt, spec)
     review = review_guardrails(spec)
     _write_json(workspace / "strategy_spec.json", spec)
@@ -247,6 +292,7 @@ def _run_case(case: ValidationCase, preflight: dict[str, object]) -> dict[str, o
 
     data_contract: dict[str, object] | None = None
     normalization_error: str | None = None
+    required_context = resolve_required_context(spec)
     if data_profile.get("data_readiness") == "ready":
         try:
             if case.data_mode == "demo_dataset":
@@ -258,6 +304,8 @@ def _run_case(case: ValidationCase, preflight: dict[str, object]) -> dict[str, o
                     raw_input_format="csv",
                     provider_name="bundled_sample_csv",
                     adjustment_mode="none",
+                    context_tables=_build_default_context_tables(required_context, demo_mode=True),
+                    sample_coverage={"selection_method": "demo_dataset"},
                 )
             else:
                 source_path = Path(str(data_profile["input_path"]))
@@ -275,6 +323,8 @@ def _run_case(case: ValidationCase, preflight: dict[str, object]) -> dict[str, o
                     raw_input_format=str(data_profile["raw_input_format"]),
                     provider_name=str(data_profile.get("provider_name", "manual_file_import")),
                     adjustment_mode="none",
+                    context_tables=_build_default_context_tables(required_context, demo_mode=False),
+                    sample_coverage={"selection_method": "manual_file_import"},
                 )
         except Exception as exc:
             normalization_error = f"{type(exc).__name__}: {exc}"
@@ -288,7 +338,12 @@ def _run_case(case: ValidationCase, preflight: dict[str, object]) -> dict[str, o
         _write_json(workspace / "data_contract.json", data_contract)
     completed_steps.append(5)
 
-    claim = build_claim_report(review=review, data_profile=data_profile, data_contract=data_contract)
+    claim = build_claim_report(
+        review=review,
+        data_profile=data_profile,
+        data_contract=data_contract,
+        spec=spec,
+    )
     if normalization_error:
         claim["reasons"].append(f"normalization_failed:{normalization_error}")
     _write_json(workspace / "claim_report.json", claim)
@@ -311,6 +366,7 @@ def _run_case(case: ValidationCase, preflight: dict[str, object]) -> dict[str, o
             "completed_steps": completed_steps,
             "cutoff_artifacts": [item["path"] for item in _collect_cutoff_artifacts(workspace)],
             "provider_choice_written": provider_choice_written and (workspace / "data" / "provider_choice.json").exists(),
+            "disambiguation_applied": bool(disambiguation_answers),
         }
 
     mode = resolve_codegen_mode(spec)
@@ -349,6 +405,7 @@ def _run_case(case: ValidationCase, preflight: dict[str, object]) -> dict[str, o
         "run_result": run_result,
         "has_runner": (workspace / "run_backtest.py").exists(),
         "has_duckdb": db_path.exists(),
+        "disambiguation_applied": bool(disambiguation_answers),
     }
 
 
@@ -366,16 +423,26 @@ def main() -> int:
         "checks": {
             "ma_demo_has_runner": (_workspace_root() / "ma_demo" / "run_backtest.py").exists(),
             "ma_demo_has_duckdb": (_workspace_root() / "ma_demo" / "data" / "normalized" / "market.duckdb").exists(),
+            "abstract_a_share_demo_has_runner": (_workspace_root() / "abstract_a_share_demo" / "run_backtest.py").exists(),
             "ambiguous_demo_has_spec": (_workspace_root() / "ambiguous_demo" / "strategy_spec.json").exists(),
             "ambiguous_demo_missing_runner": not (_workspace_root() / "ambiguous_demo" / "run_backtest.py").exists(),
             "bad_csv_demo_missing_runner": not (_workspace_root() / "bad_csv_demo" / "run_backtest.py").exists(),
+            "unsupported_terms_demo_missing_runner": not (_workspace_root() / "unsupported_terms_demo" / "run_backtest.py").exists(),
         },
     }
+    results_by_slug = {result["slug"]: result for result in results}
 
     for slug in POSITIVE_SLUGS:
         if not (_workspace_root() / slug / "run_backtest.py").exists():
             raise AssertionError(f"{slug} should generate runnable run_backtest.py")
+    for slug in {"ma_demo", "chanlun_demo", "liangxue_demo", "abstract_a_share_demo"}:
+        if results_by_slug[slug]["artifact_policy"] != ARTIFACT_POLICY_CUTOFF:
+            raise AssertionError(
+                f"{slug} should stay in cutoff until real A-share context data is available"
+            )
     for slug in NEGATIVE_SLUGS:
+        if results_by_slug[slug]["artifact_policy"] != ARTIFACT_POLICY_CUTOFF:
+            raise AssertionError(f"{slug} should stay in cutoff with artifact_policy={ARTIFACT_POLICY_CUTOFF}")
         if (_workspace_root() / slug / "run_backtest.py").exists():
             raise AssertionError(f"{slug} should stay in cutoff without run_backtest.py")
 

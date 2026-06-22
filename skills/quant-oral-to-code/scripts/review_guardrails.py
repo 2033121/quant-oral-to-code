@@ -22,7 +22,7 @@ def _flatten_strings(value: object) -> list[str]:
             flattened.extend(_flatten_strings(nested))
         return flattened
     if isinstance(value, list):
-        flattened = []
+        flattened: list[str] = []
         for item in value:
             flattened.extend(_flatten_strings(item))
         return flattened
@@ -33,13 +33,53 @@ def _contains_any(haystacks: list[str], needles: list[str]) -> bool:
     lowered_haystacks = [item.lower() for item in haystacks if item]
     for needle in needles:
         lowered = needle.lower()
-        if re.fullmatch(r"[a-z_ ]+", lowered):
+        if re.fullmatch(r"[a-z0-9_ ]+", lowered):
             pattern = re.compile(rf"(?<![a-z0-9_]){re.escape(lowered)}(?![a-z0-9_])")
             if any(pattern.search(haystack) for haystack in lowered_haystacks):
                 return True
         elif any(lowered in haystack for haystack in lowered_haystacks):
             return True
     return False
+
+
+def _collect_matches(haystacks: list[str], needles: list[str]) -> list[str]:
+    matches: list[str] = []
+    lowered_haystacks = [item.lower() for item in haystacks if item]
+    for needle in needles:
+        lowered = needle.lower()
+        if re.fullmatch(r"[a-z0-9_ ]+", lowered):
+            pattern = re.compile(rf"(?<![a-z0-9_]){re.escape(lowered)}(?![a-z0-9_])")
+            if any(pattern.search(haystack) for haystack in lowered_haystacks):
+                matches.append(needle)
+        elif any(lowered in haystack for haystack in lowered_haystacks):
+            matches.append(needle)
+    return _dedupe(matches)
+
+
+def _is_negated_match(haystack: str, needle: str) -> bool:
+    index = haystack.find(needle)
+    if index < 0:
+        return False
+    prefix = haystack[max(0, index - 8) : index]
+    negation_markers = ("不要", "避免", "禁止", "不使用", "不能", "勿", "别")
+    return any(marker in prefix for marker in negation_markers)
+
+
+def _collect_matches_without_negated_context(
+    haystacks: list[str], needles: list[str]
+) -> list[str]:
+    matches: list[str] = []
+    for haystack in [item for item in haystacks if item]:
+        lowered_haystack = haystack.lower()
+        for needle in needles:
+            lowered = needle.lower()
+            if re.fullmatch(r"[a-z0-9_ ]+", lowered):
+                pattern = re.compile(rf"(?<![a-z0-9_]){re.escape(lowered)}(?![a-z0-9_])")
+                if pattern.search(lowered_haystack) and not _is_negated_match(haystack, needle):
+                    matches.append(needle)
+            elif lowered in lowered_haystack and not _is_negated_match(haystack, needle):
+                matches.append(needle)
+    return _dedupe(matches)
 
 
 def _has_pit_visibility(spec: dict[str, object]) -> bool:
@@ -84,7 +124,9 @@ def _has_holdout(spec: dict[str, object]) -> bool:
     return False
 
 
-def _has_same_bar_close(spec: dict[str, object], text_fragments: list[str], rules: dict[str, object]) -> bool:
+def _has_same_bar_close(
+    spec: dict[str, object], text_fragments: list[str], rules: dict[str, object]
+) -> bool:
     execution_requirements = spec.get("execution_requirements")
     if isinstance(execution_requirements, dict):
         if execution_requirements.get("execution_mode") == "same_bar_close":
@@ -95,6 +137,53 @@ def _has_same_bar_close(spec: dict[str, object], text_fragments: list[str], rule
         return True
 
     return _contains_any(text_fragments, list(rules.get("same_bar_close_terms", [])))
+
+
+def _has_explicit_intraday_granularity(spec: dict[str, object]) -> bool:
+    direct_keys = [
+        "timeframe",
+        "bar_interval",
+        "data_granularity",
+        "frequency",
+        "execution_timeframe",
+    ]
+    explicit_values = {
+        "1m",
+        "3m",
+        "5m",
+        "10m",
+        "15m",
+        "30m",
+        "60m",
+        "minute",
+        "minutes",
+        "min",
+        "tick",
+        "ticks",
+        "intraday",
+    }
+
+    for key in direct_keys:
+        value = spec.get(key)
+        if isinstance(value, str) and value.strip().lower() in explicit_values:
+            return True
+
+    for section_key in ("execution_requirements", "execution", "data_contract", "market_data"):
+        section = spec.get(section_key)
+        if not isinstance(section, dict):
+            continue
+        for key in direct_keys:
+            value = section.get(key)
+            if isinstance(value, str) and value.strip().lower() in explicit_values:
+                return True
+
+    data_requirements = spec.get("data_requirements")
+    if isinstance(data_requirements, dict):
+        granularity = data_requirements.get("granularity")
+        if isinstance(granularity, str) and granularity.strip().lower() in explicit_values:
+            return True
+
+    return False
 
 
 def _dedupe(values: list[str]) -> list[str]:
@@ -137,10 +226,24 @@ def review_guardrails(spec: dict[str, object]) -> dict[str, object]:
             "evidence": "financial_factor_terms_detected_without_pit_visibility"
         }
 
-    if _contains_any(flattened, list(rules.get("full_sample_optimization_terms", []))) and not _has_holdout(spec):
+    full_sample_matches = _collect_matches(
+        flattened, list(rules.get("full_sample_optimization_terms", []))
+    )
+    if full_sample_matches and not _has_holdout(spec):
         blocking.append("optimized_on_full_sample_without_holdout")
         rule_hits["optimized_on_full_sample_without_holdout"] = {
-            "evidence": "full_sample_optimization_detected_without_holdout"
+            "evidence": full_sample_matches,
+            "recommended_next_step": "补充样本外验证、时间切分或 walk-forward 方案，禁止先挑最好看版本再定规则。",  # noqa: E501
+        }
+
+    future_leakage_matches = _collect_matches_without_negated_context(
+        flattened, list(rules.get("future_leakage_terms", []))
+    )
+    if future_leakage_matches:
+        blocking.append("future_leakage_or_hindsight_filtering")
+        rule_hits["future_leakage_or_hindsight_filtering"] = {
+            "evidence": future_leakage_matches,
+            "recommended_next_step": "把入场判定改写成下单时点可见条件，移除收盘后确认、次日结果反筛或其他前视过滤。",  # noqa: E501
         }
 
     if _has_same_bar_close(spec, flattened, rules):
@@ -149,15 +252,28 @@ def review_guardrails(spec: dict[str, object]) -> dict[str, object]:
             "suggested_execution_mode": "next_open"
         }
 
+    intraday_matches = _collect_matches(flattened, list(rules.get("intraday_terms", [])))
+    if intraday_matches and not _has_explicit_intraday_granularity(spec):
+        warnings.append("intraday_semantics_without_granularity")
+        rule_hits["intraday_semantics_without_granularity"] = {
+            "evidence": intraday_matches,
+            "recommended_data_granularity": "minute_or_tick",
+            "recommended_next_step": "明确 timeframe、分钟级数据粒度、撮合口径和可回测执行时点，不要用日线外壳承接盘中语义。",  # noqa: E501
+        }
+
     blocking = _dedupe(blocking)
     warnings = _dedupe(warnings)
 
     if blocking:
-        recommended_next_step = "先补齐模糊术语消歧、PIT/样本外验证口径，再决定是否进入 DATA_REQUIRED 或继续代码生成。"
+        recommended_next_step = (
+            "先消除未解释术语，并补齐样本外验证、PIT 可见性与前视隔离口径；未完成前不要进入 DATA_REQUIRED 或代码生成。"
+        )
         decision = "blocked"
         claim_level_ceiling = "demo_only"
     elif warnings:
-        recommended_next_step = "保持当前 spec，但把执行假设改成 next_open 并在结果说明中标注乐观成交风险。"
+        recommended_next_step = (
+            "保留当前 spec，但把执行与数据口径写明确：同 bar 收盘改成 next_open，盘中语义补足分钟级 granularity 和撮合假设。"
+        )
         decision = "warning"
         claim_level_ceiling = "portable_backtest"
     else:
@@ -180,8 +296,8 @@ if __name__ == "__main__":
     import json as _json
 
     demo_spec = {
-        "source_prompt": "收盘买入，按 PE 和 ROE 选股，再在全样本上调到最好。",
-        "translation_confidence": 0.52,
-        "unresolved_terms": ["强势"],
+        "source_prompt": "当天收盘最终站稳，且次日还有溢价才算有效。",
+        "translation_confidence": 0.91,
+        "unresolved_terms": [],
     }
     print(_json.dumps(review_guardrails(demo_spec), ensure_ascii=False, indent=2))

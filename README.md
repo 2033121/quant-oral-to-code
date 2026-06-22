@@ -1,79 +1,66 @@
 # quant-oral-to-code
 
-`quant-oral-to-code` 是一个面向量化初学者和通用智能体的 Agent Skill。
+`quant-oral-to-code` 是一个面向量化初学者和通用 Agent 的开源 skill。它的定位是把自然语言策略想法整理成可检查、可复跑、可解释的策略工作区骨架，而不是直接承诺研究级收益结论。
 
-它的目标不是只输出“策略思路”，而是把抽象自然语言策略描述，尽可能翻译成一套可验证、可回测、带风险护栏的本地量化策略工作区。
+## 项目定位
 
-主链如下：
+- 面向自然语言量化策略描述的开源工作区骨架
+- 默认产物口径以审计、解释和最小可复跑为主
+- 当前高层标准以本仓库真实实现为准，不引用旧 `.trae` 私有路径或历史草稿文件
+- 若下游模块或参考文档与当前高层口径冲突，以本 `README.md` 与 `docs/2026-06-22-quant-oral-to-code.md` 为准
 
-`natural language -> strategy_spec -> translation_trace -> guardrails -> data profile/provider route -> DuckDB normalization -> data_contract -> claim_report -> strategy.py -> run_backtest.py -> result_summary`
+## 最小依赖
 
-## 适用场景
+当前根仓库没有 `pyproject.toml`，根目录保留最小依赖文件 `requirements.txt`：
 
-- 用户不会写量化代码，只会口述策略
-- 希望自动生成可回测的策略代码，而不是只得到解释
-- 希望尽量规避常见量化坑
-  - 过拟合
-  - 前视偏差
-  - 没有样本外验证
-  - 过度乐观的成交假设
-  - 数据不完整却误判为“可回测”
-- 希望输出常见量化结果
-  - 收益曲线
-  - 回撤
-  - 收益汇总
-  - 产物清单
-
-## 仓库结构
-
-```text
-skills/
-  quant-oral-to-code/
-docs/
+```powershell
+& "C:\Users\xing\AppData\Local\Programs\Python\Python312\python.exe" -m pip install -r requirements.txt
 ```
 
-`skills/quant-oral-to-code/` 是 GitHub Agent Skills 兼容结构，可配合 `gh skill` 使用。
+最小依赖包括：
 
-## 安装与使用
+- `duckdb`
+- `jsonschema`
 
-如果你使用 GitHub CLI 的 Agent Skills 预览能力：
+`pandas` 不属于当前最小验证链路的硬依赖。它只用于部分可选取数模板或数据整理场景，不进入根目录最小依赖集合。
 
-```bash
-gh skill install 2033121/quant-oral-to-code quant-oral-to-code
+可选 provider 或模板依赖不进入根目录最小依赖集合，按使用场景自行安装。
+
+## 数据存储标准
+
+- DuckDB 是唯一标准持久化格式
+- 标准路径是 `generated_strategies/<slug>/data/normalized/market.duckdb`
+- 标准表名是 `bars`
+- 标准主键是 `["symbol", "trade_date"]`
+- 外部输入可以来自 `csv / parquet / json / sqlite / provider api`，但进入统一链路前必须归一化到 DuckDB
+- 缺少真实数据、字段映射、关键列或最小数据契约时，必须进入 `data_required_cutoff` 截断，不能伪装成“已完成正式回测”
+
+## 验证方式与副作用边界
+
+只读结构验证：
+
+```powershell
+& "C:\Users\xing\AppData\Local\Programs\Python\Python312\python.exe" "skills/quant-oral-to-code/scripts/validate_quant_oral_to_code.py"
 ```
 
-也可以直接克隆仓库后手动读取：
+全链路验证：
 
-1. `skills/quant-oral-to-code/SKILL.md`
-2. 按 `SKILL.md` 指定顺序读取 `modules/`
-3. 使用 `schemas/` 校验结构化产物
-4. 使用 `scripts/` 和 `templates/` 生成策略代码与回测入口
-
-## 最小验证
-
-```bash
-python "skills/quant-oral-to-code/scripts/validate_quant_oral_to_code.py"
-python "skills/quant-oral-to-code/scripts/run_full_validation.py"
+```powershell
+& "C:\Users\xing\AppData\Local\Programs\Python\Python312\python.exe" "skills/quant-oral-to-code/scripts/run_full_validation.py"
 ```
 
-## 数据标准
+`run_full_validation.py` 不是“最小验证”。它具有工作区副作用，但范围只限 `CASES` 中固定示例 slug 的工作区；对进入 `data_required_cutoff` 截断的示例，也只清理该工作区内预定义产物，不应当作只读检查。
 
-当前统一标准化为 DuckDB：
+## 结果口径边界
 
-- 输出：`generated_strategies/<slug>/data/normalized/market.duckdb`
-- 表名：`bars`
-- 主键：`["symbol", "trade_date"]`
-
-如果原始数据来自 CSV / Parquet / JSON / SQLite，也必须先标准化到 DuckDB，再进入统一回测链路。
-
-## 数据不足时的行为
-
-如果没有真实数据、字段映射不完整、关键列缺失或数据质量校验失败，skill 必须进入 `data_required_cutoff`，而不是伪装成完整回测已完成。
+- 默认摘要可以报告 claim level、decision、guardrail 提示、动作计数和样本规模
+- 默认摘要不宣称真实收益、最大回撤或 Sharpe
+- 只有在后续明确接入真实 PnL / equity curve 证据链后，才允许把这类指标写成可用结论
 
 ## 参考文档
 
-- [实现计划](docs/2026-06-22-quant-oral-to-code.md)
-- [A 股数据源研究](docs/2026-06-22-a-share-data-sources.md)
+- [开源版口径与边界说明](docs/2026-06-22-quant-oral-to-code.md)
+- [A 股数据源说明](docs/2026-06-22-a-share-data-sources.md)
 
 ## License
 

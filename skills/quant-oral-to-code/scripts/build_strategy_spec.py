@@ -81,6 +81,11 @@ def _append_unresolved(unresolved_terms: list[str], term: str) -> None:
         unresolved_terms.append(term)
 
 
+def _append_assumption(assumptions: list[str], message: str) -> None:
+    if message and message not in assumptions:
+        assumptions.append(message)
+
+
 def _find_ma_cross(prompt: str) -> dict | None:
     patterns = [
         r"(?P<fast>\d+)\s*[日天]?[均ma线]*[^\d]{0,6}(?:上穿|金叉|交叉|突破)[^\d]{0,6}(?P<slow>\d+)\s*[日天]?[均ma线]*",
@@ -98,13 +103,25 @@ def _find_ma_cross(prompt: str) -> dict | None:
 
 
 def _find_exit_rule(prompt: str) -> dict | None:
-    ma_stop = re.search(r"跌破\s*(?P<ma>\d+)\s*[日天]?[均ma线]*\s*止损", prompt)
+    ma_stop = re.search(
+        r"(?:价格)?跌破\s*(?P<ma>\d+)\s*[日天]?[均ma线]*\s*(?:就)?(?:走|卖出|离场|止损|撤退|退出)",
+        prompt,
+        flags=re.IGNORECASE,
+    )
     if ma_stop:
         return {"kind": "price_below_ma", "ma": int(ma_stop.group("ma"))}
     pct_stop = re.search(r"(?P<pct>\d+(?:\.\d+)?)\s*%\s*止损", prompt)
     if pct_stop:
         return {"kind": "stop_loss_pct", "pct": float(pct_stop.group("pct")) / 100.0}
     return None
+
+
+def _find_data_sensitive_terms(prompt: str, ontology: dict) -> list[tuple[str, str]]:
+    matches: list[tuple[str, str]] = []
+    for term, note in ontology.get("data_sensitive_terms", {}).items():
+        if term and term in prompt:
+            matches.append((term, note))
+    return matches
 
 
 def _estimate_confidence(entry_rules: list[dict], unresolved_terms: list[str], outputs: list[str]) -> float:
@@ -115,6 +132,33 @@ def _estimate_confidence(entry_rules: list[dict], unresolved_terms: list[str], o
         score += 0.08
     if unresolved_terms:
         score -= min(0.18, 0.04 * len(unresolved_terms))
+    return max(0.1, min(0.98, round(score, 2)))
+
+
+def estimate_translation_confidence(spec: dict) -> float:
+    entry_rules = (
+        list(spec.get("entry_rules", []))
+        if isinstance(spec.get("entry_rules"), list)
+        else []
+    )
+    unresolved_terms = [
+        str(item)
+        for item in spec.get("unresolved_terms", [])
+        if isinstance(item, str) and item.strip()
+    ]
+    outputs = (
+        list(spec.get("outputs_requested", []))
+        if isinstance(spec.get("outputs_requested"), list)
+        else []
+    )
+    disambiguated_terms = (
+        list(spec.get("disambiguated_terms", []))
+        if isinstance(spec.get("disambiguated_terms"), list)
+        else []
+    )
+    score = _estimate_confidence(entry_rules, unresolved_terms, outputs)
+    if disambiguated_terms:
+        score += min(0.15, 0.05 * len(disambiguated_terms))
     return max(0.1, min(0.98, round(score, 2)))
 
 
@@ -147,8 +191,17 @@ def build_strategy_spec(prompt: str) -> dict:
         assumptions.append("把均线上穿/金叉视为趋势跟随入场")
     if any(term in unresolved_terms for term in ("强势", "放量确认", "放量", "企稳", "站稳")):
         assumptions.append("口语化强弱与量能描述不直接量化，先保留为未消歧项")
+    for term, note in _find_data_sensitive_terms(prompt, ontology):
+        _append_unresolved(unresolved_terms, term)
+        _append_assumption(assumptions, f"术语“{term}”依赖特定数据口径，{note}")
 
-    confidence = _estimate_confidence(entry_rules, unresolved_terms, outputs)
+    confidence = estimate_translation_confidence(
+        {
+            "entry_rules": entry_rules,
+            "unresolved_terms": unresolved_terms,
+            "outputs_requested": outputs,
+        }
+    )
 
     spec = {
         "source_prompt": prompt,

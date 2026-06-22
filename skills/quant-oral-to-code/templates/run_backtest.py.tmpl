@@ -48,6 +48,18 @@ def main() -> dict[str, object]:
         protocol=protocol,
     )
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+    equity_curve_path = RESULTS_DIR / "equity_curve.json"
+    equity_curve_path.write_text(
+        json.dumps(results.get("equity_curve", []), ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    results["equity_curve_path"] = str(Path("results") / "equity_curve.json")
+    trades_path = RESULTS_DIR / "trades.json"
+    trades_path.write_text(
+        json.dumps(results.get("trades", []), ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    results["trades_path"] = str(Path("results") / "trades.json")
     metrics_path = RESULTS_DIR / "metrics_snapshot.json"
     metrics_path.write_text(
         json.dumps(results, ensure_ascii=False, indent=2),
