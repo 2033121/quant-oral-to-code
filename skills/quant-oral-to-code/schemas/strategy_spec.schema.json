@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "strategy_spec",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "strategy_family",
+    "market",
+    "timeframe",
+    "entry_rules",
+    "exit_rules",
+    "outputs_requested",
+    "translation_confidence",
+    "unresolved_terms"
+  ],
+  "properties": {
+    "strategy_name": {
+      "type": "string"
+    },
+    "strategy_family": {
+      "type": "string",
+      "enum": [
+        "trend_basic",
+        "breakout_basic",
+        "mean_reversion_basic",
+        "unknown"
+      ]
+    },
+    "market": {
+      "type": "string"
+    },
+    "timeframe": {
+      "type": "string"
+    },
+    "entry_rules": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/rule"
+      }
+    },
+    "exit_rules": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/rule"
+      }
+    },
+    "outputs_requested": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "translation_confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "unresolved_terms": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "assumptions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "source_prompt": {
+      "type": "string"
+    }
+  },
+  "$defs": {
+    "rule": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

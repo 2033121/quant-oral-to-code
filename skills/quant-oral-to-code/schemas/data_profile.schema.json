@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.local/quant-oral-to-code/data_profile.schema.json",
+  "title": "DataProfile",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "mode",
+    "data_readiness"
+  ],
+  "properties": {
+    "mode": {
+      "type": "string",
+      "enum": [
+        "demo_mode",
+        "portable_csv_mode",
+        "full_research_mode"
+      ]
+    },
+    "data_readiness": {
+      "type": "string",
+      "enum": [
+        "demo_only",
+        "needs_data",
+        "ready"
+      ]
+    },
+    "raw_input_format": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "enum": [
+        "csv",
+        "json",
+        "api",
+        "sqlite",
+        "duckdb",
+        "parquet",
+        null
+      ]
+    },
+    "provider_name": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  }
+}

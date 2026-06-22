@@ -1,0 +1,66 @@
+from __future__ import annotations
+
+import argparse
+from pathlib import Path
+import sys
+
+import baostock as bs
+import pandas as pd
+
+WORKSPACE_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = WORKSPACE_ROOT.parents[1]
+SCRIPT_ROOT = REPO_ROOT / "skills" / "quant-oral-to-code" / "scripts"
+if str(SCRIPT_ROOT) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_ROOT))
+
+from normalize_to_duckdb import normalize_to_duckdb
+
+
+PROVIDER_NAME = "$provider_name"
+DEPENDENCY_NAME = "$dependency_name"
+AUTH_METHOD = "$auth_method"
+DEFAULT_SYMBOL = "$symbol"
+DEFAULT_START_DATE = "$start_date"
+DEFAULT_END_DATE = "$end_date"
+RAW_OUTPUT = WORKSPACE_ROOT / "data" / "raw" / "market_$provider_name.csv"
+DUCKDB_OUTPUT = WORKSPACE_ROOT / "data" / "normalized" / "market.duckdb"
+
+
+def fetch_history(symbol: str, start_date: str, end_date: str) -> pd.DataFrame:
+    login_result = bs.login(user_id="anonymous", password="123456")
+    if login_result.error_code != "0":
+        raise RuntimeError(f"baostock login failed: {login_result.error_msg}")
+    try:
+        rs = bs.query_history_k_data_plus(
+            symbol,
+            "date,open,high,low,close,volume",
+            start_date=start_date,
+            end_date=end_date,
+            frequency="d",
+            adjustflag="2",
+        )
+        rows = []
+        while rs.error_code == "0" and rs.next():
+            rows.append(rs.get_row_data())
+    finally:
+        bs.logout()
+    df = pd.DataFrame(rows, columns=["trade_date", "open", "high", "low", "close", "volume"])
+    df["symbol"] = symbol
+    return df[["symbol", "trade_date", "open", "high", "low", "close", "volume"]].copy()
+
+
+def main(symbol: str, start_date: str, end_date: str) -> dict[str, object]:
+    RAW_OUTPUT.parent.mkdir(parents=True, exist_ok=True)
+    df = fetch_history(symbol=symbol, start_date=start_date, end_date=end_date)
+    df.to_csv(RAW_OUTPUT, index=False, encoding="utf-8-sig")
+    return normalize_to_duckdb(RAW_OUTPUT, DUCKDB_OUTPUT, raw_input_format="csv", adjustment_mode="qfq")
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Fetch A-share history with baostock and normalize to DuckDB.")
+    parser.add_argument("--symbol", default=DEFAULT_SYMBOL)
+    parser.add_argument("--start-date", default=DEFAULT_START_DATE)
+    parser.add_argument("--end-date", default=DEFAULT_END_DATE)
+    args = parser.parse_args()
+    result = main(symbol=args.symbol, start_date=args.start_date, end_date=args.end_date)
+    print(result)

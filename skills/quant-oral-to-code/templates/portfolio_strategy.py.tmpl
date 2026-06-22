@@ -1,0 +1,30 @@
+from __future__ import annotations
+
+from typing import Any
+
+from single_asset_strategy import GeneratedStrategy as SingleAssetGeneratedStrategy
+
+
+class GeneratedStrategy:
+    """Thin portfolio wrapper reserved for future multi-asset expansion."""
+
+    def __init__(self, asset_strategies: dict[str, SingleAssetGeneratedStrategy] | None = None) -> None:
+        self.asset_strategies = asset_strategies or {{}}
+
+    def add_asset(self, symbol: str, strategy: SingleAssetGeneratedStrategy) -> None:
+        self.asset_strategies[symbol] = strategy
+
+    def generate_signals(self, bars_by_symbol: dict[str, list[dict[str, Any]]]) -> dict[str, list[dict[str, Any]]]:
+        signals: dict[str, list[dict[str, Any]]] = {{}}
+        for symbol, bars in bars_by_symbol.items():
+            strategy = self.asset_strategies.get(symbol, SingleAssetGeneratedStrategy())
+            signals[symbol] = strategy.generate_signals(bars)
+        return signals
+
+    def decide(self, signals_by_symbol: dict[str, list[dict[str, Any]]], current_positions: dict[str, int] | None = None) -> dict[str, str]:
+        current_positions = current_positions or {{}}
+        decisions: dict[str, str] = {{}}
+        for symbol, signals in signals_by_symbol.items():
+            strategy = self.asset_strategies.get(symbol, SingleAssetGeneratedStrategy())
+            decisions[symbol] = strategy.decide(signals, current_positions.get(symbol, 0))
+        return decisions

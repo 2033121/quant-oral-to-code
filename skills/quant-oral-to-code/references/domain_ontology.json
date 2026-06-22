@@ -1,0 +1,101 @@
+{
+  "strategy_families": {
+    "trend_basic": {
+      "keywords": [
+        "均线",
+        "趋势",
+        "金叉",
+        "死叉",
+        "上穿",
+        "下穿",
+        "交叉"
+      ]
+    },
+    "breakout_basic": {
+      "keywords": [
+        "突破",
+        "新高",
+        "箱体",
+        "平台"
+      ]
+    },
+    "mean_reversion_basic": {
+      "keywords": [
+        "回调",
+        "抄底",
+        "均值回归",
+        "超跌"
+      ]
+    }
+  },
+  "markets": {
+    "A股": [
+      "A股",
+      "A股市场",
+      "沪深",
+      "A股日线"
+    ]
+  },
+  "timeframes": {
+    "daily": [
+      "日线",
+      "日K",
+      "日频",
+      "daily"
+    ]
+  },
+  "output_requests": {
+    "equity_curve": [
+      "收益曲线",
+      "资金曲线",
+      "净值曲线"
+    ],
+    "max_drawdown": [
+      "最大回撤",
+      "回撤",
+      "回撤曲线"
+    ],
+    "annual_return": [
+      "年化",
+      "年化收益"
+    ],
+    "win_rate": [
+      "胜率"
+    ],
+    "sharpe_ratio": [
+      "夏普",
+      "Sharpe"
+    ]
+  },
+  "ambiguous_terms": [
+    "强势",
+    "放量确认",
+    "放量",
+    "缩量",
+    "企稳",
+    "站稳",
+    "突破确认",
+    "趋势很强",
+    "量能",
+    "强力",
+    "弱转强"
+  ],
+  "rule_templates": {
+    "moving_average_cross": {
+      "required_fields": [
+        "fast",
+        "slow"
+      ]
+    },
+    "price_below_ma": {
+      "required_fields": [
+        "ma"
+      ]
+    },
+    "stop_loss_pct": {
+      "required_fields": [
+        "pct"
+      ]
+    }
+  }
+}

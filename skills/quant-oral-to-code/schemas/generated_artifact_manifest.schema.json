@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.local/quant-oral-to-code/generated_artifact_manifest.schema.json",
+  "title": "GeneratedArtifactManifest",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "claim_level",
+    "artifact_policy",
+    "artifact_count",
+    "artifacts"
+  ],
+  "properties": {
+    "claim_level": {
+      "type": "string",
+      "enum": [
+        "demo_only",
+        "portable_backtest",
+        "research_grade_local"
+      ]
+    },
+    "artifact_policy": {
+      "type": "string",
+      "enum": [
+        "full_workspace",
+        "data_required_cutoff"
+      ]
+    },
+    "artifact_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "path"
+        ],
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "value": {},
+          "kind": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "artifact_policy": {
+            "const": "data_required_cutoff"
+          }
+        },
+        "required": [
+          "artifact_policy"
+        ]
+      },
+      "then": {
+        "properties": {
+          "artifacts": {
+            "items": {
+              "properties": {
+                "path": {
+                  "enum": [
+                    "strategy_spec.json",
+                    "translation_trace.json",
+                    "data_contract.json",
+                    "claim_report.json",
+                    "README_beginner.md",
+                    "data/provider_choice.json"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

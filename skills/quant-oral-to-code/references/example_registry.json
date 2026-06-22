@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "default_mode": "standalone_generated",
+  "templates": {
+    "single_asset_trend_basic": {
+      "mode": "standalone_generated",
+      "template": "single_asset_strategy.py.tmpl",
+      "strategy_family": "trend_basic",
+      "supports": [
+        "moving_average_cross",
+        "price_below_ma",
+        "stop_loss_pct"
+      ]
+    },
+    "portfolio_trend_basic": {
+      "mode": "standalone_generated",
+      "template": "portfolio_strategy.py.tmpl",
+      "strategy_family": "trend_basic",
+      "supports": [
+        "moving_average_cross"
+      ]
+    }
+  }
+}

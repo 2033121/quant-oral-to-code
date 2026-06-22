@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.local/quant-oral-to-code/preflight_report.schema.json",
+  "title": "PreflightReport",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "repo_root",
+    "python_ok",
+    "overall_ready",
+    "required_python_packages",
+    "resolved_capabilities",
+    "missing_dependencies",
+    "notes"
+  ],
+  "properties": {
+    "repo_root": {
+      "type": "string",
+      "minLength": 1
+    },
+    "python_ok": {
+      "type": "boolean"
+    },
+    "overall_ready": {
+      "type": "boolean"
+    },
+    "required_python_packages": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "contains": {
+        "const": "duckdb"
+      }
+    },
+    "resolved_capabilities": {
+      "type": "object",
+      "required": [
+        "duckdb"
+      ],
+      "properties": {
+        "duckdb": {
+          "type": "object",
+          "required": [
+            "installed",
+            "hard_required"
+          ],
+          "properties": {
+            "installed": {
+              "type": "boolean"
+            },
+            "hard_required": {
+              "type": "boolean",
+              "const": true
+            },
+            "version": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "error": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "missing_dependencies": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "notes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

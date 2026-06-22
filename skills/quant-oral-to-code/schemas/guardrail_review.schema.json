@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "guardrail_review",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "blocking",
+    "warnings",
+    "recommended_next_step",
+    "translation_confidence"
+  ],
+  "properties": {
+    "blocking": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "recommended_next_step": {
+      "type": "string",
+      "minLength": 1
+    },
+    "translation_confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "decision": {
+      "type": "string",
+      "enum": [
+        "blocked",
+        "warning",
+        "pass"
+      ]
+    },
+    "claim_level_ceiling": {
+      "type": "string",
+      "enum": [
+        "demo_only",
+        "portable_backtest",
+        "research_grade_local"
+      ]
+    },
+    "rule_hits": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": true
+      }
+    }
+  }
+}

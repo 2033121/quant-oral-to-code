@@ -1,0 +1,61 @@
+{
+  "translation_confidence_blocking_below": 0.6,
+  "rules": {
+    "financial_factor_without_pit_visibility": {
+      "severity": "blocking",
+      "message": "使用财务或估值因子时，必须说明 PIT 可见性或财报可见日口径。"
+    },
+    "same_bar_close_is_optimistic": {
+      "severity": "warning",
+      "message": "同 bar 收盘成交属于乐观执行假设，应降级为提示并建议改为 next_open。"
+    },
+    "optimized_on_full_sample_without_holdout": {
+      "severity": "blocking",
+      "message": "出现全样本调参或最优参数搜索，但没有 holdout/样本外验证。"
+    },
+    "low_translation_confidence": {
+      "severity": "blocking",
+      "message": "自然语言翻译置信度过低，不能直接进入可运行研究产物。"
+    },
+    "ambiguous_term_unresolved": {
+      "severity": "blocking",
+      "message": "存在未消歧的模糊术语，当前 spec 仍不足以支撑可靠回测。"
+    }
+  },
+  "financial_factor_terms": [
+    "pe",
+    "pb",
+    "ps",
+    "pcf",
+    "roe",
+    "roic",
+    "eps",
+    "净利润",
+    "利润增速",
+    "营收",
+    "收入增速",
+    "财务因子",
+    "估值因子",
+    "基本面"
+  ],
+  "full_sample_optimization_terms": [
+    "全样本",
+    "全历史",
+    "全周期",
+    "full sample",
+    "optimize",
+    "optimization",
+    "参数搜索",
+    "调到最好",
+    "最优参数",
+    "walk-forward 之前先全样本调参"
+  ],
+  "same_bar_close_terms": [
+    "收盘买入",
+    "当日收盘买入",
+    "收盘成交",
+    "same_bar_close",
+    "same bar close",
+    "close execution"
+  ]
+}

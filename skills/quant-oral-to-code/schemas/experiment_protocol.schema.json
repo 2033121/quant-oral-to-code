@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.local/quant-oral-to-code/experiment_protocol.schema.json",
+  "title": "ExperimentProtocol",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "sample_split",
+    "costs",
+    "execution"
+  ],
+  "properties": {
+    "sample_split": {
+      "type": "object"
+    },
+    "costs": {
+      "type": "object"
+    },
+    "execution": {
+      "type": "object"
+    }
+  }
+}

@@ -1,0 +1,21 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+
+def test_generated_runner_and_protocol_exist() -> None:
+    workspace = Path(__file__).resolve().parent
+    assert (workspace / "strategy.py").exists()
+    assert (workspace / "run_backtest.py").exists()
+    assert (workspace / "experiment_protocol.json").exists()
+
+
+def test_generated_protocol_uses_normalized_duckdb_contract() -> None:
+    workspace = Path(__file__).resolve().parent
+    protocol = json.loads((workspace / "experiment_protocol.json").read_text(encoding="utf-8"))
+
+    assert protocol["data"]["storage_format"] == "duckdb"
+    assert protocol["data"]["storage_path"] == "data/normalized/market.duckdb"
+    assert protocol["data"]["bars_table_name"] == "bars"
+    assert protocol["execution"]["mode"] == "next_open"

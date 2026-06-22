@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "translation_trace",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "prompt",
+    "mappings",
+    "assumptions",
+    "unresolved_terms",
+    "translation_confidence"
+  ],
+  "properties": {
+    "prompt": {
+      "type": "string"
+    },
+    "mappings": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/mapping"
+      }
+    },
+    "assumptions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "unresolved_terms": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "translation_confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    }
+  },
+  "$defs": {
+    "mapping": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "source_text",
+        "field_path",
+        "mapped_value",
+        "confidence"
+      ],
+      "properties": {
+        "source_text": {
+          "type": "string"
+        },
+        "field_path": {
+          "type": "string"
+        },
+        "mapped_value": {},
+        "assumption": {
+          "type": "string"
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      }
+    }
+  }
+}

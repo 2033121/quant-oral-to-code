@@ -1,0 +1,88 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Any
+
+
+@dataclass
+class StrategyConfig:
+    strategy_name: str = "{strategy_name}"
+    strategy_family: str = "{strategy_family}"
+    market: str = "{market}"
+    timeframe: str = "{timeframe}"
+    fast_ma: int = {fast_ma}
+    slow_ma: int = {slow_ma}
+    exit_ma: int | None = {exit_ma}
+    stop_loss_pct: float | None = {stop_loss_pct}
+
+
+class GeneratedStrategy:
+    """Self-contained generated strategy with minimal signal/decision logic."""
+
+    def __init__(self, config: StrategyConfig | None = None) -> None:
+        self.config = config or StrategyConfig()
+
+    def describe(self) -> dict[str, Any]:
+        return {{
+            "strategy_name": self.config.strategy_name,
+            "strategy_family": self.config.strategy_family,
+            "market": self.config.market,
+            "timeframe": self.config.timeframe,
+            "fast_ma": self.config.fast_ma,
+            "slow_ma": self.config.slow_ma,
+            "exit_ma": self.config.exit_ma,
+            "stop_loss_pct": self.config.stop_loss_pct,
+        }}
+
+    def _moving_average(self, bars: list[dict[str, Any]], end_index: int, window: int) -> float | None:
+        if window <= 0 or end_index + 1 < window:
+            return None
+        closes = [float(item["close"]) for item in bars[end_index - window + 1 : end_index + 1]]
+        return sum(closes) / float(window)
+
+    def generate_signals(self, bars: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        signals: list[dict[str, Any]] = []
+        for index, bar in enumerate(bars):
+            fast_ma = self._moving_average(bars, index, self.config.fast_ma)
+            slow_ma = self._moving_average(bars, index, self.config.slow_ma)
+            previous_fast = self._moving_average(bars, index - 1, self.config.fast_ma) if index > 0 else None
+            previous_slow = self._moving_average(bars, index - 1, self.config.slow_ma) if index > 0 else None
+            enter_long = bool(
+                fast_ma is not None
+                and slow_ma is not None
+                and previous_fast is not None
+                and previous_slow is not None
+                and previous_fast <= previous_slow
+                and fast_ma > slow_ma
+            )
+            exit_long = False
+            if self.config.exit_ma is not None:
+                exit_ma = self._moving_average(bars, index, self.config.exit_ma)
+                exit_long = exit_ma is not None and float(bar["close"]) < exit_ma
+            signals.append(
+                {{
+                    "index": index,
+                    "symbol": bar.get("symbol", "UNKNOWN"),
+                    "trade_date": bar.get("trade_date"),
+                    "close": float(bar["close"]),
+                    "fast_ma": fast_ma,
+                    "slow_ma": slow_ma,
+                    "enter_long": enter_long,
+                    "exit_long": exit_long,
+                }}
+            )
+        return signals
+
+    def decide(self, signals: list[dict[str, Any]], current_position: int = 0) -> str:
+        if not signals:
+            return "hold"
+        latest = signals[-1]
+        if latest["enter_long"] and current_position <= 0:
+            return "buy"
+        if latest["exit_long"] and current_position > 0:
+            return "sell"
+        return "hold"
+
+
+def build_strategy() -> GeneratedStrategy:
+    return GeneratedStrategy()

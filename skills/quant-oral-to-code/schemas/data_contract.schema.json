@@ -1,0 +1,139 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.local/quant-oral-to-code/data_contract.schema.json",
+  "title": "DataContract",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "storage_format",
+    "storage_target",
+    "bars_table_name",
+    "table_layout",
+    "primary_key",
+    "required_tables",
+    "required_columns",
+    "write_disposition",
+    "raw_input_format",
+    "provider_name",
+    "adjustment_mode",
+    "data_hash"
+  ],
+  "properties": {
+    "storage_format": {
+      "type": "string",
+      "const": "duckdb"
+    },
+    "storage_target": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": ".*\\.duckdb$"
+    },
+    "bars_table_name": {
+      "type": "string",
+      "const": "bars"
+    },
+    "table_layout": {
+      "type": "string",
+      "const": "single_table"
+    },
+    "primary_key": {
+      "type": "array",
+      "prefixItems": [
+        {
+          "const": "symbol"
+        },
+        {
+          "const": "trade_date"
+        }
+      ],
+      "minItems": 2,
+      "maxItems": 2
+    },
+    "required_tables": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "contains": {
+        "const": "bars"
+      }
+    },
+    "required_columns": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "allOf": [
+        {
+          "contains": {
+            "const": "symbol"
+          }
+        },
+        {
+          "contains": {
+            "const": "trade_date"
+          }
+        },
+        {
+          "contains": {
+            "const": "open"
+          }
+        },
+        {
+          "contains": {
+            "const": "high"
+          }
+        },
+        {
+          "contains": {
+            "const": "low"
+          }
+        },
+        {
+          "contains": {
+            "const": "close"
+          }
+        },
+        {
+          "contains": {
+            "const": "volume"
+          }
+        }
+      ]
+    },
+    "write_disposition": {
+      "type": "string",
+      "enum": [
+        "overwrite",
+        "append",
+        "upsert"
+      ]
+    },
+    "raw_input_format": {
+      "type": "string",
+      "enum": [
+        "csv",
+        "json",
+        "api",
+        "sqlite",
+        "duckdb",
+        "parquet"
+      ]
+    },
+    "provider_name": {
+      "type": "string"
+    },
+    "adjustment_mode": {
+      "type": "string",
+      "enum": [
+        "none",
+        "qfq",
+        "hfq"
+      ]
+    },
+    "data_hash": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}

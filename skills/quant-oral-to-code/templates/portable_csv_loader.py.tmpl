@@ -1,0 +1,31 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+from detect_data_profile import detect_data_profile
+from normalize_to_duckdb import normalize_to_duckdb
+from validate_fetched_dataset import validate_fetched_dataset
+
+
+def load_portable_market_data(input_path: str | Path, output_duckdb: str | Path) -> dict[str, object]:
+    profile = detect_data_profile(input_path)
+    if profile["mode"] != "portable_csv_mode":
+        return {
+            "status": "data_required_cutoff",
+            "profile": profile,
+            "message": "未检测到可导入的 csv/parquet/json/sqlite/duckdb 数据源。",
+        }
+
+    normalized = normalize_to_duckdb(
+        profile["input_path"],
+        output_duckdb,
+        raw_input_format=str(profile["raw_input_format"]),
+        adjustment_mode="none",
+    )
+    validation = validate_fetched_dataset(output_duckdb)
+    return {
+        "status": "ok" if validation["ok"] else "invalid_dataset",
+        "profile": profile,
+        "normalized": normalized,
+        "validation": validation,
+    }

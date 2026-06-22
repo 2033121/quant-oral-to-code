@@ -1,0 +1,89 @@
+{
+  "version": "2026-06-22",
+  "default_policy": {
+    "prefer_zero_setup_first": true,
+    "normalized_storage": "data/normalized/market.duckdb",
+    "cutoff_decision": "data_required_cutoff"
+  },
+  "providers": [
+    {
+      "name": "akshare",
+      "tier": "tier_a_no_auth",
+      "auth": "none",
+      "supports_history_bars": true,
+      "supports_intraday": false,
+      "decision_default": "generated_fetcher",
+      "dependency": "akshare",
+      "notes": "零门槛优先默认项，适合 A 股日线历史行情。"
+    },
+    {
+      "name": "efinance",
+      "tier": "tier_a_no_auth",
+      "auth": "none",
+      "supports_history_bars": true,
+      "supports_intraday": true,
+      "decision_default": "generated_fetcher",
+      "dependency": "efinance",
+      "notes": "东财系零门槛备选，适合快速拉股票与 ETF 历史行情。"
+    },
+    {
+      "name": "adata",
+      "tier": "tier_a_no_auth",
+      "auth": "none",
+      "supports_history_bars": true,
+      "supports_intraday": true,
+      "decision_default": "generated_fetcher",
+      "dependency": "adata",
+      "notes": "多数据源聚合备选，适合做数据落地。"
+    },
+    {
+      "name": "baostock",
+      "tier": "tier_a_no_auth",
+      "auth": "anonymous",
+      "supports_history_bars": true,
+      "supports_intraday": false,
+      "decision_default": "generated_fetcher",
+      "dependency": "baostock",
+      "notes": "匿名登录的兜底历史行情源。"
+    },
+    {
+      "name": "tushare",
+      "tier": "tier_b_auth_or_trial",
+      "auth": "token",
+      "supports_history_bars": true,
+      "supports_intraday": false,
+      "decision_default": "generated_fetcher",
+      "dependency": "tushare",
+      "notes": "用户愿意注册并提供 token 时可升级。"
+    },
+    {
+      "name": "jqdatasdk",
+      "tier": "tier_b_auth_or_trial",
+      "auth": "username_password",
+      "supports_history_bars": true,
+      "supports_intraday": true,
+      "decision_default": "generated_fetcher",
+      "dependency": "jqdatasdk",
+      "notes": "研究型账号路线，适合有聚宽认证的用户。"
+    },
+    {
+      "name": "manual_csv",
+      "tier": "tier_d_manual_csv",
+      "auth": "manual_export",
+      "supports_history_bars": true,
+      "supports_intraday": true,
+      "decision_default": "data_required_cutoff",
+      "dependency": "none",
+      "notes": "要求用户手工导出 CSV/Parquet 后进入可移植数据导入链路。"
+    }
+  ],
+  "fallback_order": [
+    "akshare",
+    "efinance",
+    "adata",
+    "baostock",
+    "tushare",
+    "jqdatasdk",
+    "manual_csv"
+  ]
+}

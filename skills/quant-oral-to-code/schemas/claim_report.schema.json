@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.local/quant-oral-to-code/claim_report.schema.json",
+  "title": "ClaimReport",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "claim_level",
+    "artifact_policy",
+    "decision",
+    "reasons"
+  ],
+  "properties": {
+    "claim_level": {
+      "type": "string",
+      "enum": [
+        "demo_only",
+        "portable_backtest",
+        "research_grade_local"
+      ]
+    },
+    "artifact_policy": {
+      "type": "string",
+      "enum": [
+        "full_workspace",
+        "data_required_cutoff"
+      ]
+    },
+    "decision": {
+      "type": "string",
+      "enum": [
+        "cutoff",
+        "runnable"
+      ]
+    },
+    "reasons": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "review_summary": {
+      "type": "object"
+    },
+    "data_summary": {
+      "type": "object"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "artifact_policy": {
+            "const": "data_required_cutoff"
+          }
+        },
+        "required": [
+          "artifact_policy"
+        ]
+      },
+      "then": {
+        "properties": {
+          "decision": {
+            "const": "cutoff"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "artifact_policy": {
+            "const": "full_workspace"
+          }
+        },
+        "required": [
+          "artifact_policy"
+        ]
+      },
+      "then": {
+        "properties": {
+          "decision": {
+            "const": "runnable"
+          }
+        }
+      }
+    }
+  ]
+}

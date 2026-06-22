@@ -1,0 +1,60 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import duckdb
+
+from backtest_kernel import run_backtest
+from load_generated_strategy import load_generated_strategy
+
+
+WORKSPACE_DIR = Path(__file__).resolve().parent
+DATA_DB_RELATIVE = "data/normalized/market.duckdb"
+DATA_DB = WORKSPACE_DIR / "data" / "normalized" / "market.duckdb"
+PROTOCOL_FILE = WORKSPACE_DIR / "experiment_protocol.json"
+RESULTS_DIR = WORKSPACE_DIR / "results"
+
+
+def load_protocol(protocol_path: Path = PROTOCOL_FILE) -> dict[str, object]:
+    return json.loads(protocol_path.read_text(encoding="utf-8"))
+
+
+def load_bars_dataframe(db_path: Path = DATA_DB, table_name: str = "{bars_table_name}"):
+    conn = duckdb.connect(str(db_path), read_only=True)
+    try:
+        return conn.execute(
+            f'''
+            select symbol, trade_date, open, high, low, close, volume
+            from "{{table_name}}"
+            order by symbol, trade_date
+            '''
+        ).fetchdf()
+    finally:
+        conn.close()
+
+
+def main() -> dict[str, object]:
+    protocol = load_protocol()
+    bars_df = load_bars_dataframe(
+        DATA_DB,
+        table_name=str(protocol["data"]["bars_table_name"]),
+    )
+    strategy_class = load_generated_strategy(WORKSPACE_DIR / "strategy.py")
+    strategy = strategy_class()
+    results = run_backtest(
+        strategy=strategy,
+        bars_df=bars_df,
+        protocol=protocol,
+    )
+    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+    metrics_path = RESULTS_DIR / "metrics_snapshot.json"
+    metrics_path.write_text(
+        json.dumps(results, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    return results
+
+
+if __name__ == "__main__":
+    main()
