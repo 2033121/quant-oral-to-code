@@ -19,9 +19,9 @@ jobs:
       - name: Install validation deps
         run: |
           python -m pip install --upgrade pip
-          pip install -r skills/quant-oral-to-code/requirements.txt
+          pip install -r requirements.txt
 
-      - name: Layout tests
+      - name: Layout / guardrails / bundle tests
         working-directory: skills/quant-oral-to-code/scripts
         run: |
           python test_skill_layout.py
