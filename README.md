@@ -78,3 +78,13 @@ python "skills/quant-oral-to-code/scripts/run_full_validation.py"
 ## License
 
 MIT
+## 多智能体适配 / Cross-agent compatibility
+
+两个 skill 形态均为标准 Agent Skills（SKILL.md），可装载到多个智能体：
+
+```bash
+bash adapters/install.sh --claude --codex --zcode --dsh   # 软链安装到对应 skills 目录（含 ZCode frontmatter 校验）
+python3 adapters/build_prompt_pack.py                     # 生成聊天型智能体（WorkBuddy 等）可粘贴的单文件包
+```
+
+注意：`scripts/` 与 `schemas/` 未内联进提示词包——聊天型智能体用它做**策略规格转写与 guardrails 评审**（最多 `demo_only` 信念分级），真正的回测执行需要文件型智能体。详见根 `AGENTS.md` 与 `adapters/README.md`。
