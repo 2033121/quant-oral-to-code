@@ -7,6 +7,8 @@ from pathlib import Path
 CUTOFF_ALLOWED_ARTIFACTS = {
     "strategy_spec.json",
     "translation_trace.json",
+    "disambiguation_pack.json",
+    "disambiguation_answers.json",
     "data_contract.json",
     "claim_report.json",
     "README_beginner.md",

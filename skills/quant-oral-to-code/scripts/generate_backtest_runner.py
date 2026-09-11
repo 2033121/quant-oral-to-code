@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import shutil
 
 
 DEFAULT_PROTOCOL = {
@@ -36,6 +37,13 @@ def _skill_root() -> Path:
 def _load_template(template_name: str) -> str:
     template_path = _skill_root() / "templates" / template_name
     return template_path.read_text(encoding="utf-8")
+
+
+def _copy_runtime_support(output_path: Path, module_name: str) -> Path:
+    source_path = Path(__file__).resolve().parent / module_name
+    target_path = output_path / module_name
+    shutil.copyfile(source_path, target_path)
+    return target_path
 
 
 def _deep_copy(value: object) -> object:
@@ -78,6 +86,8 @@ def generate_backtest_runner(spec: dict, output_dir: str | Path) -> dict[str, st
 
     runner_file = output_path / "run_backtest.py"
     runner_file.write_text(runner_text, encoding="utf-8")
+    kernel_file = _copy_runtime_support(output_path, "backtest_kernel.py")
+    loader_file = _copy_runtime_support(output_path, "load_generated_strategy.py")
 
     protocol_file = output_path / "experiment_protocol.json"
     protocol_file.write_text(
@@ -87,5 +97,7 @@ def generate_backtest_runner(spec: dict, output_dir: str | Path) -> dict[str, st
 
     return {
         "runner_file": str(runner_file),
+        "kernel_file": str(kernel_file),
+        "loader_file": str(loader_file),
         "protocol_file": str(protocol_file),
     }

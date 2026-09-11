@@ -39,7 +39,7 @@ def _create_market_duckdb(db_path: Path) -> Path:
 
 def test_preflight_resolves_repo_root_and_duckdb_contract(tmp_path: Path):
     repo_root = resolve_repo_root(Path(__file__).resolve())
-    assert (repo_root / "skills").exists()
+    assert (repo_root / "SKILL.md").exists() or (repo_root / "skills").exists()
 
     preflight = check_runtime_capabilities(repo_root)
     assert preflight["python_ok"] is True
@@ -70,3 +70,23 @@ def test_resolve_repo_root_walks_up_from_deep_non_root_entry():
         / "entry.py"
     )
     assert resolve_repo_root(deep_entry) == repo_root
+
+
+def test_resolve_repo_root_accepts_standalone_skill_layout(tmp_path: Path):
+    skill_root = tmp_path / "quant-oral-to-code"
+    for relative in [
+        "docs",
+        "modules",
+        "references",
+        "schemas",
+        "scripts",
+        "templates",
+    ]:
+        (skill_root / relative).mkdir(parents=True, exist_ok=True)
+    (skill_root / "SKILL.md").write_text("# skill", encoding="utf-8")
+
+    deep_entry = skill_root / "scripts" / "nested" / "entry.py"
+    deep_entry.parent.mkdir(parents=True, exist_ok=True)
+    deep_entry.write_text("", encoding="utf-8")
+
+    assert resolve_repo_root(deep_entry) == skill_root

@@ -1,20 +1,51 @@
 from __future__ import annotations
 
 import argparse
+import importlib.util
+import json
 import os
 from pathlib import Path
-import sys
 
 import jqdatasdk as jq
 import pandas as pd
 
 WORKSPACE_ROOT = Path(__file__).resolve().parents[1]
-REPO_ROOT = WORKSPACE_ROOT.parents[1]
-SCRIPT_ROOT = REPO_ROOT / "skills" / "quant-oral-to-code" / "scripts"
-if str(SCRIPT_ROOT) not in sys.path:
-    sys.path.insert(0, str(SCRIPT_ROOT))
+REPO_ROOT_SENTINELS = (".git", "docs", "skills")
+SKILL_SCRIPT_SENTINELS = ("normalize_to_duckdb.py", "context_data_helpers.py")
 
-from normalize_to_duckdb import normalize_to_duckdb
+
+def _resolve_repo_root() -> Path:
+    for candidate in (WORKSPACE_ROOT, *WORKSPACE_ROOT.parents):
+        script_root = candidate / "skills" / "quant-oral-to-code" / "scripts"
+        has_repo_sentinels = all((candidate / sentinel).exists() for sentinel in REPO_ROOT_SENTINELS)
+        has_skill_sentinels = all((script_root / sentinel).exists() for sentinel in SKILL_SCRIPT_SENTINELS)
+        if has_repo_sentinels and has_skill_sentinels:
+            return candidate
+    raise FileNotFoundError(f"Could not locate quant-oral-to-code skill root from {WORKSPACE_ROOT}")
+
+
+REPO_ROOT = _resolve_repo_root()
+SCRIPT_ROOT = REPO_ROOT / "skills" / "quant-oral-to-code" / "scripts"
+
+
+def _load_module(module_filename: str, module_name: str):
+    module_path = SCRIPT_ROOT / module_filename
+    spec = importlib.util.spec_from_file_location(module_name, module_path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"Could not load {module_filename} from {module_path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+normalize_to_duckdb = _load_module(
+    "normalize_to_duckdb.py",
+    "quant_oral_to_code_normalize_to_duckdb",
+).normalize_to_duckdb
+persist_real_data_artifacts = _load_module(
+    "context_data_helpers.py",
+    "quant_oral_to_code_context_data_helpers",
+).persist_real_data_artifacts
 
 
 PROVIDER_NAME = "$provider_name"
@@ -25,8 +56,21 @@ PASSWORD_ENV_NAME = "JQDATA_PASSWORD"
 DEFAULT_SYMBOL = "$symbol"
 DEFAULT_START_DATE = "$start_date"
 DEFAULT_END_DATE = "$end_date"
+DEFAULT_BENCHMARK = "000300.XSHG"
 RAW_OUTPUT = WORKSPACE_ROOT / "data" / "raw" / "market_$provider_name.csv"
 DUCKDB_OUTPUT = WORKSPACE_ROOT / "data" / "normalized" / "market.duckdb"
+CONTEXT_REPORT_OUTPUT = WORKSPACE_ROOT / "data" / "context_fetch_report.json"
+DATA_CONTRACT_OUTPUT = WORKSPACE_ROOT / "data_contract.json"
+PROVIDER_CONTEXT_SUPPORT = json.loads("""$context_support_json""")
+
+
+def _auth(username: str | None = None, password: str | None = None) -> tuple[str, str]:
+    actual_username = username or os.getenv(USER_ENV_NAME)
+    actual_password = password or os.getenv(PASSWORD_ENV_NAME)
+    if not actual_username or not actual_password:
+        raise RuntimeError(f"missing {USER_ENV_NAME} or {PASSWORD_ENV_NAME}")
+    jq.auth(actual_username, actual_password)
+    return actual_username, actual_password
 
 
 def fetch_history(
@@ -36,11 +80,7 @@ def fetch_history(
     username: str | None = None,
     password: str | None = None,
 ) -> pd.DataFrame:
-    actual_username = username or os.getenv(USER_ENV_NAME)
-    actual_password = password or os.getenv(PASSWORD_ENV_NAME)
-    if not actual_username or not actual_password:
-        raise RuntimeError(f"missing {USER_ENV_NAME} or {PASSWORD_ENV_NAME}")
-    jq.auth(actual_username, actual_password)
+    _auth(username=username, password=password)
     df = jq.get_price(
         symbol,
         start_date=start_date,
@@ -48,9 +88,166 @@ def fetch_history(
         frequency="daily",
         fields=["open", "high", "low", "close", "volume"],
     )
+    if df.empty:
+        raise RuntimeError(f"no daily bars returned for {symbol}")
     df = df.reset_index().rename(columns={"index": "trade_date"})
     df["symbol"] = symbol
+    df["trade_date"] = pd.to_datetime(df["trade_date"]).dt.strftime("%Y-%m-%d")
     return df[["symbol", "trade_date", "open", "high", "low", "close", "volume"]].copy()
+
+
+def fetch_security_master(
+    symbol: str,
+    username: str | None = None,
+    password: str | None = None,
+) -> pd.DataFrame:
+    _auth(username=username, password=password)
+    info = jq.get_all_securities(types=["stock"], date=None)
+    info = info.reset_index().rename(columns={"index": "symbol", "display_name": "security_name"})
+    target = info.loc[info["symbol"] == symbol]
+    if target.empty:
+        raise RuntimeError(f"no security master returned for {symbol}")
+    target["list_date"] = pd.to_datetime(target["start_date"]).dt.strftime("%Y-%m-%d")
+    target["list_status"] = "L"
+    target["industry_name"] = None
+    target["market_name"] = "A_share"
+    target["area"] = None
+    return target[
+        ["symbol", "security_name", "area", "industry_name", "market_name", "list_date", "list_status"]
+    ].copy()
+
+
+def fetch_st_status(
+    symbol: str,
+    start_date: str,
+    end_date: str,
+    username: str | None = None,
+    password: str | None = None,
+) -> pd.DataFrame:
+    _auth(username=username, password=password)
+    dates = pd.date_range(start=start_date, end=end_date, freq="D")
+    if dates.empty:
+        return pd.DataFrame(columns=["symbol", "trade_date", "is_st"])
+    extras = jq.get_extras(
+        "is_st",
+        [symbol],
+        start_date=start_date,
+        end_date=end_date,
+        df=True,
+    )
+    if extras.empty:
+        return pd.DataFrame(columns=["symbol", "trade_date", "is_st"])
+    frame = extras.reset_index().rename(columns={"index": "trade_date", symbol: "is_st"})
+    frame["symbol"] = symbol
+    frame["trade_date"] = pd.to_datetime(frame["trade_date"]).dt.strftime("%Y-%m-%d")
+    return frame[["symbol", "trade_date", "is_st"]].copy()
+
+
+def fetch_suspension_status(
+    symbol: str,
+    start_date: str,
+    end_date: str,
+    username: str | None = None,
+    password: str | None = None,
+) -> pd.DataFrame:
+    _auth(username=username, password=password)
+    df = jq.get_price(
+        symbol,
+        start_date=start_date,
+        end_date=end_date,
+        frequency="daily",
+        fields=["paused"],
+    )
+    if df.empty:
+        return pd.DataFrame(columns=["symbol", "trade_date", "is_suspended"])
+    df = df.reset_index().rename(columns={"index": "trade_date"})
+    df["symbol"] = symbol
+    df["trade_date"] = pd.to_datetime(df["trade_date"]).dt.strftime("%Y-%m-%d")
+    df = df.rename(columns={"paused": "is_suspended"})
+    return df[["symbol", "trade_date", "is_suspended"]].copy()
+
+
+def fetch_group_membership(
+    symbol: str,
+    username: str | None = None,
+    password: str | None = None,
+) -> pd.DataFrame:
+    _auth(username=username, password=password)
+    industry = jq.get_industry([symbol])
+    row = industry.get(symbol, {}) if isinstance(industry, dict) else {}
+    sw_info = row.get("sw_l1", {}) if isinstance(row, dict) else {}
+    group_code = sw_info.get("industry_code")
+    group_name = sw_info.get("industry_name")
+    return pd.DataFrame(
+        [
+            {
+                "symbol": symbol,
+                "group_type": "sw_l1",
+                "group_code": group_code,
+                "group_name": group_name,
+                "effective_from": None,
+                "effective_to": None,
+            }
+        ]
+    )
+
+
+def fetch_benchmark_series(
+    benchmark_code: str,
+    start_date: str,
+    end_date: str,
+    username: str | None = None,
+    password: str | None = None,
+) -> pd.DataFrame:
+    _auth(username=username, password=password)
+    df = jq.get_price(
+        benchmark_code,
+        start_date=start_date,
+        end_date=end_date,
+        frequency="daily",
+        fields=["open", "high", "low", "close", "volume"],
+    )
+    if df.empty:
+        raise RuntimeError(f"no benchmark series returned for {benchmark_code}")
+    df = df.reset_index().rename(columns={"index": "trade_date"})
+    df["benchmark_code"] = benchmark_code
+    df["trade_date"] = pd.to_datetime(df["trade_date"]).dt.strftime("%Y-%m-%d")
+    return df[["benchmark_code", "trade_date", "open", "high", "low", "close", "volume"]].copy()
+
+
+def fetch_context_payload(
+    symbol: str,
+    start_date: str,
+    end_date: str,
+    benchmark_code: str,
+    username: str | None = None,
+    password: str | None = None,
+) -> dict[str, object]:
+    return {
+        "security_master": fetch_security_master(symbol, username=username, password=password),
+        "st_status": fetch_st_status(
+            symbol,
+            start_date=start_date,
+            end_date=end_date,
+            username=username,
+            password=password,
+        ),
+        "suspension_status": fetch_suspension_status(
+            symbol,
+            start_date=start_date,
+            end_date=end_date,
+            username=username,
+            password=password,
+        ),
+        "group_membership": fetch_group_membership(symbol, username=username, password=password),
+        "benchmark_series": fetch_benchmark_series(
+            benchmark_code=benchmark_code,
+            start_date=start_date,
+            end_date=end_date,
+            username=username,
+            password=password,
+        ),
+    }
 
 
 def main(
@@ -59,17 +256,48 @@ def main(
     end_date: str,
     username: str | None = None,
     password: str | None = None,
+    benchmark_code: str = DEFAULT_BENCHMARK,
 ) -> dict[str, object]:
     RAW_OUTPUT.parent.mkdir(parents=True, exist_ok=True)
-    df = fetch_history(
+    history = fetch_history(
         symbol=symbol,
         start_date=start_date,
         end_date=end_date,
         username=username,
         password=password,
     )
-    df.to_csv(RAW_OUTPUT, index=False, encoding="utf-8-sig")
-    return normalize_to_duckdb(RAW_OUTPUT, DUCKDB_OUTPUT, raw_input_format="csv", adjustment_mode="qfq")
+    history.to_csv(RAW_OUTPUT, index=False, encoding="utf-8-sig")
+    normalization = normalize_to_duckdb(RAW_OUTPUT, DUCKDB_OUTPUT, raw_input_format="csv", adjustment_mode="qfq")
+    context_payload = fetch_context_payload(
+        symbol=symbol,
+        start_date=start_date,
+        end_date=end_date,
+        benchmark_code=benchmark_code,
+        username=username,
+        password=password,
+    )
+    artifacts = persist_real_data_artifacts(
+        storage_target=DUCKDB_OUTPUT,
+        raw_input_format="csv",
+        provider_name=PROVIDER_NAME,
+        adjustment_mode="qfq",
+        context_payload=context_payload,
+        provider_support=PROVIDER_CONTEXT_SUPPORT,
+        selection_method="single_symbol_api",
+        contract_output_path=DATA_CONTRACT_OUTPUT,
+        context_report_output_path=CONTEXT_REPORT_OUTPUT,
+        benchmark_code=benchmark_code,
+        universe_name="single_symbol_a_share",
+    )
+    return {
+        **normalization,
+        "provider_name": PROVIDER_NAME,
+        "raw_output": str(RAW_OUTPUT),
+        "context_report_file": artifacts["context_report_file"],
+        "data_contract_file": artifacts["data_contract_file"],
+        "context_tables": artifacts["context_tables"],
+        "sample_coverage": artifacts["sample_coverage"],
+    }
 
 
 if __name__ == "__main__":
@@ -79,6 +307,7 @@ if __name__ == "__main__":
     parser.add_argument("--end-date", default=DEFAULT_END_DATE)
     parser.add_argument("--username", default=None)
     parser.add_argument("--password", default=None)
+    parser.add_argument("--benchmark-code", default=DEFAULT_BENCHMARK)
     args = parser.parse_args()
     result = main(
         symbol=args.symbol,
@@ -86,5 +315,6 @@ if __name__ == "__main__":
         end_date=args.end_date,
         username=args.username,
         password=args.password,
+        benchmark_code=args.benchmark_code,
     )
     print(result)

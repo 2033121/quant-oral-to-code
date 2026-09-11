@@ -5,7 +5,6 @@ from pathlib import Path
 
 import jsonschema
 
-from build_claim_report import build_claim_report
 from build_data_contract import build_data_contract
 from check_runtime_capabilities import check_runtime_capabilities
 from emit_artifact_manifest import validate_artifact_manifest
@@ -26,6 +25,15 @@ MODULE_TITLES = {
 
 MODULE_PATHS = list(MODULE_TITLES.keys())
 
+DOC_PATHS = [
+    "docs/2026-06-22-quant-oral-to-code.md",
+    "docs/2026-06-22-a-share-data-sources.md",
+]
+
+AGENT_METADATA_PATHS = [
+    "agents/openai.yaml",
+]
+
 TASK2_SCHEMA_PATHS = [
     "schemas/preflight_report.schema.json",
     "schemas/data_profile.schema.json",
@@ -37,24 +45,37 @@ TASK2_SCHEMA_PATHS = [
 
 TASK2_SCRIPT_PATHS = [
     "scripts/resolve_repo_root.py",
+    "scripts/build_disambiguation_pack.py",
+    "scripts/apply_disambiguation_answers.py",
     "scripts/check_runtime_capabilities.py",
+    "scripts/build_release_bundle.py",
     "scripts/build_data_contract.py",
     "scripts/build_claim_report.py",
     "scripts/emit_artifact_manifest.py",
     "scripts/render_beginner_readme.py",
+    "scripts/run_disambiguation_flow.py",
     "scripts/test_preflight.py",
     "scripts/test_data_contract.py",
     "scripts/test_claim_gate.py",
     "scripts/test_artifact_manifest.py",
+    "scripts/test_disambiguation_flow.py",
+    "scripts/render_disambiguation_questions.py",
+    "scripts/test_build_release_bundle.py",
+    "scripts/test_render_disambiguation_questions.py",
+    "scripts/test_full_validation_disambiguation.py",
+    "scripts/test_run_disambiguation_flow.py",
 ]
 
 REQUIRED_FILES = [
     ROOT / "SKILL.md",
+    *[ROOT / relative_path for relative_path in DOC_PATHS],
+    *[ROOT / relative_path for relative_path in AGENT_METADATA_PATHS],
     *[ROOT / relative_path for relative_path in MODULE_PATHS],
     *[ROOT / relative_path for relative_path in TASK2_SCHEMA_PATHS],
     *[ROOT / relative_path for relative_path in TASK2_SCRIPT_PATHS],
     ROOT / "scripts" / "validate_quant_oral_to_code.py",
     ROOT / "scripts" / "test_skill_layout.py",
+    ROOT / "references" / "term_disambiguation_library.json",
 ]
 
 
@@ -97,6 +118,7 @@ def _module_content_checks() -> list[dict[str, object]]:
 def _skill_content_checks() -> list[dict[str, object]]:
     skill_path = ROOT / "SKILL.md"
     text = _read_text(skill_path)
+    agent_yaml = _read_text(ROOT / "agents" / "openai.yaml")
     ordered_module_mentions = [text.find(relative_path) for relative_path in MODULE_PATHS]
     return [
         {
@@ -117,6 +139,18 @@ def _skill_content_checks() -> list[dict[str, object]]:
             "ok": "description:" in text,
             "expected": "description:",
         },
+        {
+            "path": "SKILL.md",
+            "rule": "has_argument_hint_field",
+            "ok": "argument-hint:" in text,
+            "expected": "argument-hint:",
+        },
+        {
+            "path": "SKILL.md",
+            "rule": "has_allowed_tools_field",
+            "ok": "allowed-tools:" in text,
+            "expected": "allowed-tools:",
+        },
         *[
             {
                 "path": "SKILL.md",
@@ -134,10 +168,34 @@ def _skill_content_checks() -> list[dict[str, object]]:
         },
         {
             "path": "SKILL.md",
+            "rule": "references_local_docs",
+            "ok": "docs/2026-06-22-quant-oral-to-code.md" in text,
+            "expected": "docs/2026-06-22-quant-oral-to-code.md",
+        },
+        {
+            "path": "SKILL.md",
             "rule": "default_module_order_is_stable",
             "ok": all(index >= 0 for index in ordered_module_mentions)
             and ordered_module_mentions == sorted(ordered_module_mentions),
             "expected": "module paths appear in default read order",
+        },
+        {
+            "path": "agents/openai.yaml",
+            "rule": "has_display_name",
+            "ok": "display_name:" in agent_yaml,
+            "expected": "display_name:",
+        },
+        {
+            "path": "agents/openai.yaml",
+            "rule": "has_short_description",
+            "ok": "short_description:" in agent_yaml,
+            "expected": "short_description:",
+        },
+        {
+            "path": "agents/openai.yaml",
+            "rule": "has_default_prompt",
+            "ok": "default_prompt:" in agent_yaml,
+            "expected": "default_prompt:",
         },
     ]
 
@@ -245,6 +303,34 @@ def _semantic_checks() -> list[dict[str, object]]:
             "rule": "rejects_missing_duckdb_storage_target",
             "ok": missing_db_ok,
             "expected": "build_data_contract should fail when duckdb file is missing",
+        }
+    )
+
+    bad_null_hash_contract = {
+        "storage_format": "duckdb",
+        "storage_target": "generated_strategies/demo/data/normalized/market.duckdb",
+        "bars_table_name": "bars",
+        "table_layout": "single_table",
+        "primary_key": ["symbol", "trade_date"],
+        "required_tables": ["bars"],
+        "required_columns": ["symbol", "trade_date", "open", "high", "low", "close", "volume"],
+        "write_disposition": "overwrite",
+        "raw_input_format": "csv",
+        "provider_name": "manual_csv",
+        "adjustment_mode": "qfq",
+        "data_hash": None,
+    }
+    try:
+        jsonschema.validate(bad_null_hash_contract, data_contract_schema)
+        bad_null_hash_ok = False
+    except jsonschema.ValidationError:
+        bad_null_hash_ok = True
+    checks.append(
+        {
+            "path": "schemas/data_contract.schema.json",
+            "rule": "rejects_null_data_hash",
+            "ok": bad_null_hash_ok,
+            "expected": "data_hash must be non-empty string",
         }
     )
 

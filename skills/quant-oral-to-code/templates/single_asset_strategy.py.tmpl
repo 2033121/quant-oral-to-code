@@ -14,6 +14,40 @@ class StrategyConfig:
     slow_ma: int = {slow_ma}
     exit_ma: int | None = {exit_ma}
     stop_loss_pct: float | None = {stop_loss_pct}
+    use_return_rank_filter: bool = {use_return_rank_filter}
+    return_rank_lookback: int = {return_rank_lookback}
+    use_consolidation_filter: bool = {use_consolidation_filter}
+    consolidation_lookback: int = {consolidation_lookback}
+    consolidation_max_range_pct: float = {consolidation_max_range_pct}
+    use_retest_breakout_filter: bool = {use_retest_breakout_filter}
+    retest_lookback: int = {retest_lookback}
+    retest_tolerance: float = {retest_tolerance}
+    use_trend_ma_filter: bool = {use_trend_ma_filter}
+    trend_ma: int = {trend_ma}
+    use_support_ma_filter: bool = {use_support_ma_filter}
+    support_ma: int = {support_ma}
+    use_gap_open_filter: bool = {use_gap_open_filter}
+    min_gap_pct: float = {min_gap_pct}
+    use_volume_ratio_filter: bool = {use_volume_ratio_filter}
+    volume_ratio_lookback: int = {volume_ratio_lookback}
+    volume_ratio_min: float = {volume_ratio_min}
+    use_close_location_filter: bool = {use_close_location_filter}
+    min_clv: float = {min_clv}
+    use_group_relative_strength_filter: bool = {use_group_relative_strength_filter}
+    group_relative_strength_lookback: int = {group_relative_strength_lookback}
+    group_relative_strength_min_excess_return: float = {group_relative_strength_min_excess_return}
+    use_rank_improvement_filter: bool = {use_rank_improvement_filter}
+    rank_improvement_lookback: int = {rank_improvement_lookback}
+    use_liquidity_quantile_filter: bool = {use_liquidity_quantile_filter}
+    liquidity_quantile_metric: str = "{liquidity_quantile_metric}"
+    liquidity_quantile: float = {liquidity_quantile}
+    use_breakout_rank_filter: bool = {use_breakout_rank_filter}
+    breakout_rank_lookback: int = {breakout_rank_lookback}
+    breakout_rank_top_n: int = {breakout_rank_top_n}
+    use_reclaim_breakout_filter: bool = {use_reclaim_breakout_filter}
+    reclaim_breakout_lookback: int = {reclaim_breakout_lookback}
+    use_sector_breakout_confirmation_filter: bool = {use_sector_breakout_confirmation_filter}
+    sector_breakout_lookback: int = {sector_breakout_lookback}
 
 
 class GeneratedStrategy:
@@ -32,6 +66,40 @@ class GeneratedStrategy:
             "slow_ma": self.config.slow_ma,
             "exit_ma": self.config.exit_ma,
             "stop_loss_pct": self.config.stop_loss_pct,
+            "use_return_rank_filter": self.config.use_return_rank_filter,
+            "return_rank_lookback": self.config.return_rank_lookback,
+            "use_consolidation_filter": self.config.use_consolidation_filter,
+            "consolidation_lookback": self.config.consolidation_lookback,
+            "consolidation_max_range_pct": self.config.consolidation_max_range_pct,
+            "use_retest_breakout_filter": self.config.use_retest_breakout_filter,
+            "retest_lookback": self.config.retest_lookback,
+            "retest_tolerance": self.config.retest_tolerance,
+            "use_trend_ma_filter": self.config.use_trend_ma_filter,
+            "trend_ma": self.config.trend_ma,
+            "use_support_ma_filter": self.config.use_support_ma_filter,
+            "support_ma": self.config.support_ma,
+            "use_gap_open_filter": self.config.use_gap_open_filter,
+            "min_gap_pct": self.config.min_gap_pct,
+            "use_volume_ratio_filter": self.config.use_volume_ratio_filter,
+            "volume_ratio_lookback": self.config.volume_ratio_lookback,
+            "volume_ratio_min": self.config.volume_ratio_min,
+            "use_close_location_filter": self.config.use_close_location_filter,
+            "min_clv": self.config.min_clv,
+            "use_group_relative_strength_filter": self.config.use_group_relative_strength_filter,
+            "group_relative_strength_lookback": self.config.group_relative_strength_lookback,
+            "group_relative_strength_min_excess_return": self.config.group_relative_strength_min_excess_return,
+            "use_rank_improvement_filter": self.config.use_rank_improvement_filter,
+            "rank_improvement_lookback": self.config.rank_improvement_lookback,
+            "use_liquidity_quantile_filter": self.config.use_liquidity_quantile_filter,
+            "liquidity_quantile_metric": self.config.liquidity_quantile_metric,
+            "liquidity_quantile": self.config.liquidity_quantile,
+            "use_breakout_rank_filter": self.config.use_breakout_rank_filter,
+            "breakout_rank_lookback": self.config.breakout_rank_lookback,
+            "breakout_rank_top_n": self.config.breakout_rank_top_n,
+            "use_reclaim_breakout_filter": self.config.use_reclaim_breakout_filter,
+            "reclaim_breakout_lookback": self.config.reclaim_breakout_lookback,
+            "use_sector_breakout_confirmation_filter": self.config.use_sector_breakout_confirmation_filter,
+            "sector_breakout_lookback": self.config.sector_breakout_lookback,
         }}
 
     def _moving_average(self, bars: list[dict[str, Any]], end_index: int, window: int) -> float | None:
@@ -39,6 +107,172 @@ class GeneratedStrategy:
             return None
         closes = [float(item["close"]) for item in bars[end_index - window + 1 : end_index + 1]]
         return sum(closes) / float(window)
+
+    def _max_high(self, bars: list[dict[str, Any]], end_index: int, window: int) -> float | None:
+        if window <= 0 or end_index + 1 < window:
+            return None
+        highs = [float(item["high"]) for item in bars[end_index - window + 1 : end_index + 1]]
+        return max(highs) if highs else None
+
+    def _min_low(self, bars: list[dict[str, Any]], end_index: int, window: int) -> float | None:
+        if window <= 0 or end_index + 1 < window:
+            return None
+        lows = [float(item["low"]) for item in bars[end_index - window + 1 : end_index + 1]]
+        return min(lows) if lows else None
+
+    def _rolling_return(self, bars: list[dict[str, Any]], end_index: int, window: int) -> float | None:
+        if window <= 0 or end_index < window:
+            return None
+        current_close = float(bars[end_index]["close"])
+        start_close = float(bars[end_index - window]["close"])
+        if start_close == 0:
+            return None
+        return (current_close / start_close) - 1.0
+
+    def _volume_ratio(self, bars: list[dict[str, Any]], end_index: int, window: int) -> float | None:
+        if window <= 0 or end_index < window:
+            return None
+        current_volume = float(bars[end_index]["volume"])
+        prior = [float(item["volume"]) for item in bars[end_index - window : end_index]]
+        if not prior:
+            return None
+        average_volume = sum(prior) / float(len(prior))
+        if average_volume == 0:
+            return None
+        return current_volume / average_volume
+
+    def _close_location_value(self, bar: dict[str, Any]) -> float | None:
+        high = float(bar["high"])
+        low = float(bar["low"])
+        close = float(bar["close"])
+        if high <= low:
+            return None
+        return (close - low) / (high - low)
+
+    def _passes_group_relative_strength_filter(self, bars: list[dict[str, Any]], end_index: int) -> bool:
+        if not self.config.use_group_relative_strength_filter:
+            return True
+        bar = bars[end_index]
+        excess_key = f"__cross_sectional_excess_return_{{self.config.group_relative_strength_lookback}}"
+        excess_return = bar.get(excess_key)
+        return isinstance(excess_return, (int, float)) and excess_return >= self.config.group_relative_strength_min_excess_return
+
+    def _passes_rank_improvement_filter(self, bars: list[dict[str, Any]], end_index: int) -> bool:
+        if not self.config.use_rank_improvement_filter:
+            return True
+        bar = bars[end_index]
+        delta_key = f"__cross_sectional_rank_delta_{{self.config.rank_improvement_lookback}}"
+        rank_delta = bar.get(delta_key)
+        return isinstance(rank_delta, (int, float)) and rank_delta > 0
+
+    def _passes_liquidity_quantile_filter(self, bars: list[dict[str, Any]], end_index: int) -> bool:
+        if not self.config.use_liquidity_quantile_filter:
+            return True
+        window = bars[max(0, end_index - self.config.volume_ratio_lookback + 1) : end_index + 1]
+        metric_values: list[float] = []
+        for item in window:
+            if self.config.liquidity_quantile_metric == "turnover_or_amount":
+                metric_values.append(float(item["volume"]) * float(item["close"]))
+            else:
+                metric_values.append(float(item["volume"]))
+        if not metric_values:
+            return False
+        threshold_index = max(0, int(len(metric_values) * self.config.liquidity_quantile) - 1)
+        threshold = sorted(metric_values)[threshold_index]
+        latest_metric = metric_values[-1]
+        return latest_metric >= threshold
+
+    def _passes_breakout_rank_filter(self, bars: list[dict[str, Any]], end_index: int) -> bool:
+        if not self.config.use_breakout_rank_filter:
+            return True
+        return self._passes_retest_breakout(bars, end_index) and self._passes_return_rank_proxy(bars, end_index)
+
+    def _passes_reclaim_breakout_filter(self, bars: list[dict[str, Any]], end_index: int) -> bool:
+        if not self.config.use_reclaim_breakout_filter:
+            return True
+        if end_index < self.config.reclaim_breakout_lookback:
+            return False
+        prior_high = self._max_high(bars, end_index - 1, self.config.reclaim_breakout_lookback)
+        latest_close = float(bars[end_index]["close"])
+        if prior_high is None:
+            return False
+        return latest_close >= prior_high
+
+    def _passes_sector_breakout_confirmation_filter(self, bars: list[dict[str, Any]], end_index: int) -> bool:
+        if not self.config.use_sector_breakout_confirmation_filter:
+            return True
+        trend_ma = self._moving_average(bars, end_index, self.config.sector_breakout_lookback)
+        return trend_ma is not None and float(bars[end_index]["close"]) >= trend_ma
+
+    def _passes_consolidation(self, bars: list[dict[str, Any]], end_index: int) -> bool:
+        if not self.config.use_consolidation_filter:
+            return True
+        highest = self._max_high(bars, end_index, self.config.consolidation_lookback)
+        lowest = self._min_low(bars, end_index, self.config.consolidation_lookback)
+        latest_close = float(bars[end_index]["close"])
+        if highest is None or lowest is None or latest_close <= 0:
+            return False
+        range_pct = (highest - lowest) / latest_close
+        return range_pct <= self.config.consolidation_max_range_pct
+
+    def _passes_return_rank_proxy(self, bars: list[dict[str, Any]], end_index: int) -> bool:
+        if not self.config.use_return_rank_filter:
+            return True
+        rolling_return = self._rolling_return(bars, end_index, self.config.return_rank_lookback)
+        return rolling_return is not None and rolling_return > 0.08
+
+    def _passes_retest_breakout(self, bars: list[dict[str, Any]], end_index: int) -> bool:
+        if not self.config.use_retest_breakout_filter:
+            return True
+        if end_index < self.config.retest_lookback:
+            return False
+        prior_high = self._max_high(bars, end_index - 1, self.config.retest_lookback)
+        latest_close = float(bars[end_index]["close"])
+        latest_low = float(bars[end_index]["low"])
+        if prior_high is None:
+            return False
+        tolerated_low = prior_high * (1.0 - self.config.retest_tolerance)
+        return latest_close > prior_high and latest_low >= tolerated_low
+
+    def _passes_trend_ma_filter(self, bars: list[dict[str, Any]], end_index: int) -> bool:
+        if not self.config.use_trend_ma_filter:
+            return True
+        trend_ma = self._moving_average(bars, end_index, self.config.trend_ma)
+        if trend_ma is None:
+            return False
+        return float(bars[end_index]["close"]) > trend_ma
+
+    def _passes_support_ma_filter(self, bars: list[dict[str, Any]], end_index: int) -> bool:
+        if not self.config.use_support_ma_filter:
+            return True
+        support_ma = self._moving_average(bars, end_index, self.config.support_ma)
+        if support_ma is None:
+            return False
+        return float(bars[end_index]["low"]) >= support_ma
+
+    def _passes_gap_open_filter(self, bars: list[dict[str, Any]], end_index: int) -> bool:
+        if not self.config.use_gap_open_filter:
+            return True
+        if end_index <= 0:
+            return False
+        previous_close = float(bars[end_index - 1]["close"])
+        if previous_close == 0:
+            return False
+        current_open = float(bars[end_index]["open"])
+        gap_pct = (current_open / previous_close) - 1.0
+        return gap_pct >= self.config.min_gap_pct
+
+    def _passes_volume_ratio_filter(self, bars: list[dict[str, Any]], end_index: int) -> bool:
+        if not self.config.use_volume_ratio_filter:
+            return True
+        ratio = self._volume_ratio(bars, end_index, self.config.volume_ratio_lookback)
+        return ratio is not None and ratio >= self.config.volume_ratio_min
+
+    def _passes_close_location_filter(self, bars: list[dict[str, Any]], end_index: int) -> bool:
+        if not self.config.use_close_location_filter:
+            return True
+        clv = self._close_location_value(bars[end_index])
+        return clv is not None and clv >= self.config.min_clv
 
     def generate_signals(self, bars: list[dict[str, Any]]) -> list[dict[str, Any]]:
         signals: list[dict[str, Any]] = []
@@ -54,6 +288,20 @@ class GeneratedStrategy:
                 and previous_slow is not None
                 and previous_fast <= previous_slow
                 and fast_ma > slow_ma
+                and self._passes_return_rank_proxy(bars, index)
+                and self._passes_consolidation(bars, index)
+                and self._passes_retest_breakout(bars, index)
+                and self._passes_trend_ma_filter(bars, index)
+                and self._passes_support_ma_filter(bars, index)
+                and self._passes_gap_open_filter(bars, index)
+                and self._passes_volume_ratio_filter(bars, index)
+                and self._passes_close_location_filter(bars, index)
+                and self._passes_group_relative_strength_filter(bars, index)
+                and self._passes_rank_improvement_filter(bars, index)
+                and self._passes_liquidity_quantile_filter(bars, index)
+                and self._passes_breakout_rank_filter(bars, index)
+                and self._passes_reclaim_breakout_filter(bars, index)
+                and self._passes_sector_breakout_confirmation_filter(bars, index)
             )
             exit_long = False
             if self.config.exit_ma is not None:

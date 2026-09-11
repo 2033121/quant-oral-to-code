@@ -1,0 +1,4 @@
+interface:
+  display_name: "量化口述转代码"
+  short_description: "把抽象A股策略描述整理成可回测代码与DuckDB数据契约"
+  default_prompt: "使用 $quant-oral-to-code 把这段自然语言A股策略转成可回测代码、真实数据检查流程和结果说明。"

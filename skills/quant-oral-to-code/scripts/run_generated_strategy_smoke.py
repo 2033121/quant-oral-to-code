@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
+import os
 from pathlib import Path
+import subprocess
+import sys
 
 
 def run_generated_strategy_smoke(workspace: str | Path) -> dict[str, object]:
@@ -12,19 +14,26 @@ def run_generated_strategy_smoke(workspace: str | Path) -> dict[str, object]:
     if not runner_path.exists():
         raise FileNotFoundError(f"missing generated runner: {runner_path}")
 
-    scripts_dir = Path(__file__).resolve().parent
-    if str(scripts_dir) not in sys.path:
-        sys.path.insert(0, str(scripts_dir))
+    env = os.environ.copy()
+    env.pop("PYTHONPATH", None)
+    completed = subprocess.run(
+        [sys.executable, str(runner_path)],
+        cwd=str(workspace_path),
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if completed.returncode != 0:
+        raise RuntimeError(
+            "generated runner smoke failed with "
+            f"exit code {completed.returncode}: {completed.stderr.strip()}"
+        )
 
-    namespace: dict[str, object] = {
-        "__file__": str(runner_path),
-        "__name__": "generated_runner_smoke",
-    }
-    exec(compile(runner_path.read_text(encoding="utf-8"), str(runner_path), "exec"), namespace)
-    main = namespace.get("main")
-    if not callable(main):
-        raise AttributeError(f"runner does not expose callable main(): {runner_path}")
-    result = main()
+    metrics_path = workspace_path / "results" / "metrics_snapshot.json"
+    if not metrics_path.exists():
+        raise FileNotFoundError(f"runner did not write metrics snapshot: {metrics_path}")
+    result = json.loads(metrics_path.read_text(encoding="utf-8"))
     if not isinstance(result, dict):
         raise TypeError(f"runner main() must return dict, got {type(result).__name__}")
     return result

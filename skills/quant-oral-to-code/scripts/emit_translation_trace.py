@@ -112,6 +112,27 @@ def emit_translation_trace(prompt: str, spec: dict) -> dict:
             }
         )
 
+    for item in spec.get("disambiguated_terms", []):
+        if not isinstance(item, dict):
+            continue
+        term = str(item.get("term", ""))
+        choice_id = str(item.get("choice_id", ""))
+        label = str(item.get("label", ""))
+        if term and choice_id:
+            mappings.append(
+                {
+                    "source_text": term,
+                    "field_path": "disambiguated_terms[]",
+                    "mapped_value": {
+                        "choice_id": choice_id,
+                        "label": label,
+                        "rule": item.get("rule", {}),
+                    },
+                    "assumption": "该抽象术语已通过候选定义选择题回填为可执行代理规则",
+                    "confidence": 0.82,
+                }
+            )
+
     return {
         "prompt": prompt,
         "mappings": mappings,

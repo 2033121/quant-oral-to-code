@@ -22,6 +22,8 @@ def test_cutoff_manifest_accepts_only_cutoff_whitelist():
         {
             "strategy_spec.json": "ok",
             "translation_trace.json": "ok",
+            "disambiguation_pack.json": "ok",
+            "disambiguation_answers.json": "ok",
             "data_contract.json": "ok",
             "claim_report.json": "ok",
             "README_beginner.md": "ok",
@@ -31,7 +33,7 @@ def test_cutoff_manifest_accepts_only_cutoff_whitelist():
         artifact_policy="data_required_cutoff",
     )
     assert manifest["artifact_policy"] == "data_required_cutoff"
-    assert manifest["artifact_count"] == 6
+    assert manifest["artifact_count"] == 8
 
 
 def test_cutoff_manifest_rejects_strategy_py():

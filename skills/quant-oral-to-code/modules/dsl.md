@@ -24,6 +24,7 @@
 
 - 能明确写字段就写字段，不能明确就标记 `unknown` 或 `needs_clarification`。
 - 不凭空补交易规则。
+- 对“龙头 / 中枢 / 背驰 / 分歧转一致 / 竞价 / 均价线”等抽象词，先产出候选代理定义和选择题；在用户确认或补充后，再把结果回填进结构化字段。
 - 中文术语可以保留，但字段名保持稳定，便于脚本消费。
 - claim level 的基础枚举先固定为 `demo_only`、`portable_backtest`、`research_grade_local`。
 - 如果数据要求无法满足，DSL 结果要允许后续进入 cutoff / `DATA_REQUIRED`，而不是强行补成“可正式回测”。

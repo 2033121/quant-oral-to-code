@@ -93,3 +93,25 @@ def test_build_data_contract_fails_when_duckdb_does_not_exist(tmp_path: Path):
     except FileNotFoundError:
         return
     raise AssertionError("build_data_contract should fail when duckdb does not exist")
+
+
+def test_data_contract_preserves_context_tables_and_sample_coverage(tmp_path: Path):
+    db_path = _create_market_duckdb(tmp_path / "market.duckdb")
+    contract = build_data_contract(
+        storage_target=db_path,
+        raw_input_format="csv",
+        provider_name="tushare",
+        adjustment_mode="qfq",
+        context_tables={
+            "security_master": {"available": True, "table_name": "security_master", "row_count": 1, "source": "tushare"},
+            "st_status": {"available": True, "table_name": "st_status", "row_count": 2, "source": "tushare"},
+            "suspension_status": {"available": True, "table_name": "suspension_status", "row_count": 3, "source": "tushare"},
+            "group_membership": {"available": True, "table_name": "group_membership", "row_count": 1, "source": "tushare"},
+            "benchmark_series": {"available": True, "table_name": "benchmark_series", "row_count": 200, "source": "tushare"},
+        },
+        sample_coverage={"selection_method": "multi_symbol_fixture", "symbol_count": 100, "row_count": 5000},
+    )
+    assert contract["context_tables"]["security_master"]["available"] is True
+    assert contract["context_tables"]["benchmark_series"]["table_name"] == "benchmark_series"
+    assert contract["sample_coverage"]["selection_method"] == "multi_symbol_fixture"
+    assert contract["sample_coverage"]["symbol_count"] == 100
