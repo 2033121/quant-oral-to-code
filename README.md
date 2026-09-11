@@ -1,3 +1,5 @@
+[English](README.en.md) | 中文
+
 # quant-oral-to-code
 
 `quant-oral-to-code` 是一个面向量化初学者和通用 Agent 的开源 skill。它的定位是把自然语言策略想法整理成可检查、可复跑、可解释的策略工作区骨架，而不是直接承诺研究级收益结论。
